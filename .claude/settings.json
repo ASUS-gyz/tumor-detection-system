@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p c:/projects/tumor-detection-system/app/Http/Api && ls c:/projects/tumor-detection-system/app/Http/)"
+    ],
+    "additionalDirectories": [
+      "c:\\projects\\tumor-detection-system\\app\\Http"
+    ]
+  }
+}
