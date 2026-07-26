@@ -23,11 +23,14 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         // 参数验证异常
+        // 若由 BaseRequest::failedValidation() 抛出，已携带 Result 响应则透传
+        // 否则（手动 Validator）按统一格式包装
         $exceptions->render(
-            fn (\Illuminate\Validation\ValidationException $e) => \App\Support\Result::error(
-                \App\Enums\ResponseCode::PARAM_ERROR,
-                collect($e->errors())->flatten()->first()
-            )
+            fn (\Illuminate\Validation\ValidationException $e) => $e->response
+                ?? \App\Support\Result::error(
+                    \App\Enums\ResponseCode::PARAM_ERROR,
+                    collect($e->errors())->flatten()->first()
+                )
         );
 
         // 未登录
