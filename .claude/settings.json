@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir -p c:/projects/tumor-detection-system/app/Http/Api && ls c:/projects/tumor-detection-system/app/Http/)"
+      "Bash(mkdir -p c:/projects/tumor-detection-system/app/Http/Api && ls c:/projects/tumor-detection-system/app/Http/)",
+      "Bash(composer --version)",
+      "Bash(php -v)",
+      "Bash(php -m)",
+      "Bash(php -r ' *)"
     ],
     "additionalDirectories": [
       "c:\\projects\\tumor-detection-system\\app\\Http"
