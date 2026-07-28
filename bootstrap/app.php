@@ -9,12 +9,23 @@ use Illuminate\Support\Facades\Log;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // 全局中间件 — TraceId 链路追踪
         $middleware->append(\App\Http\Middleware\TraceIdMiddleware::class);
+
+        // API 路由组中间件
+        $middleware->api(append: [
+            \App\Http\Middleware\ApiLogMiddleware::class,
+        ]);
+
+        // 别名中间件
+        $middleware->alias([
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // 对所有请求统一返回 JSON（开发手册规范）
