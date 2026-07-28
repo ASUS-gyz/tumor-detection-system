@@ -14,23 +14,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // 全局中间件 — TraceId 链路追踪
         $middleware->append(\App\Http\Middleware\TraceIdMiddleware::class);
-
-        // 中间件别名
+        $middleware->api(append: [
+            \App\Http\Middleware\ApiLogMiddleware::class,
+        ]);
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // 对所有请求统一返回 JSON（开发手册规范）
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => true,
+            fn (Request $_request) => true,
         );
-
-        // 参数验证异常
-        // 若由 BaseRequest::failedValidation() 抛出，已携带 Result 响应则透传
-        // 否则（手动 Validator）按统一格式包装
         $exceptions->render(
             fn (\Illuminate\Validation\ValidationException $e) => $e->response
                 ?? \App\Support\Result::error(
@@ -38,38 +33,28 @@ return Application::configure(basePath: dirname(__DIR__))
                     collect($e->errors())->flatten()->first()
                 )
         );
-
-        // 未登录
         $exceptions->render(
-            fn (\Illuminate\Auth\AuthenticationException $e) => \App\Support\Result::error(
+            fn (\Illuminate\Auth\AuthenticationException $_e) => \App\Support\Result::error(
                 \App\Enums\ResponseCode::UNAUTHORIZED
             )
         );
-
-        // 模型不存在
         $exceptions->render(
-            fn (\Illuminate\Database\Eloquent\ModelNotFoundException $e) => \App\Support\Result::error(
+            fn (\Illuminate\Database\Eloquent\ModelNotFoundException $_e) => \App\Support\Result::error(
                 \App\Enums\ResponseCode::DATA_NOT_FOUND
             )
         );
-
-        // 路由不存在
         $exceptions->render(
-            fn (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e) => \App\Support\Result::error(
+            fn (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $_e) => \App\Support\Result::error(
                 \App\Enums\ResponseCode::DATA_NOT_FOUND,
                 '接口不存在'
             )
         );
-
-        // 业务异常
         $exceptions->render(
             fn (\App\Exceptions\BusinessException $e) => \App\Support\Result::error(
                 $e->codeEnum,
                 $e->getMessage()
             )
         );
-
-        // 数据库异常
         $exceptions->render(function (\Illuminate\Database\QueryException $e, Request $request) {
             Log::channel('exception')->error('数据库异常', [
                 'trace_id' => $request->attributes->get('trace_id'),
@@ -77,13 +62,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 'bindings' => $e->getBindings(),
                 'message' => $e->getMessage(),
             ]);
-
             return \App\Support\Result::error(
                 \App\Enums\ResponseCode::DATABASE_ERROR
             );
         });
-
-        // 未知异常 — 兜底处理
         $exceptions->render(function (\Throwable $e, Request $request) {
             Log::channel('exception')->error($e->getMessage(), [
                 'trace_id' => $request->attributes->get('trace_id'),
@@ -91,7 +73,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
-
             return \App\Support\Result::error(
                 \App\Enums\ResponseCode::SYSTEM_ERROR
             );
