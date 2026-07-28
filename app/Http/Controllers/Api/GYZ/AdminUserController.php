@@ -42,4 +42,14 @@ class AdminUserController extends Controller
     {
         return Result::success(msg: '状态已更新', data: $this->service->toggleStatus($id, $request->input('status'), auth()->id()));
     }
+
+    public function batchImport(Request $request): JsonResponse
+    {
+        $created = [];
+        foreach ($request->input('users', []) as $userData) {
+            $created[] = $this->service->create($userData);
+        }
+
+        return Result::success(msg: "成功导入 {$request->input('count', count($created))} 个账号", data: ['count' => count($created)]);
+    }
 }

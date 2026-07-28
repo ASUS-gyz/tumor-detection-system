@@ -44,4 +44,9 @@ class DoctorAppointmentController extends Controller
     {
         return Result::success(msg: '结束接诊', data: $this->service->complete(auth()->id(), $id));
     }
+
+    public function reject(int $id): JsonResponse
+    {
+        return Result::success(msg: '已拒绝该预约', data: $this->service->reject(auth()->id(), $id));
+    }
 }

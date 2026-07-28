@@ -1,11 +1,14 @@
 <?php
 
-use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\GYZ\AdminDashboardController;
+use App\Http\Controllers\Api\GYZ\AdminSystemController;
 use App\Http\Controllers\Api\GYZ\AdminUserController;
 use App\Http\Controllers\Api\GYZ\DoctorAiDiagnosisController;
 use App\Http\Controllers\Api\GYZ\DoctorAppointmentController;
+use App\Http\Controllers\Api\GYZ\DoctorScheduleController;
 use App\Http\Controllers\Api\GYZ\DrugController;
+use App\Http\Controllers\Api\GYZ\NotificationController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Doctor\MedicalRecordController as DoctorMedicalRecordController;
 use App\Http\Controllers\Doctor\PrescriptionController as DoctorPrescriptionController;
 use App\Http\Controllers\Doctor\TemplateController;
@@ -17,14 +20,11 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes — 肿瘤科智能检测门诊系统（ZZT 29 + GYZ 26 = 55 接口）
+| API Routes — ZZT 29 + GYZ 44 = 73 接口（已实现）
 |--------------------------------------------------------------------------
 */
 
-// ═══════════════════ ZZT: 认证模块 (11) ═══════════════════
-// ───────────────────── 认证模块 ─────────────────────
-// 前缀：/api/auth | 接口数：11
-
+// ==================== ZZT: 认证模块 (11) ====================
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
@@ -42,8 +42,7 @@ Route::prefix('auth')->group(function () {
     });
 });
 
-// ═══════════════════ ZZT: 患者端 (23) ═══════════════════
-
+// ==================== ZZT: 患者端 (16) ====================
 Route::prefix('patient')->middleware(['auth:sanctum', 'role:patient'])->group(function () {
     // 预约管理
     Route::get('/dashboard', [PatientController::class, 'dashboard']);
@@ -62,29 +61,6 @@ Route::prefix('patient')->middleware(['auth:sanctum', 'role:patient'])->group(fu
     Route::post('/ai-diagnosis/continue', [AIDiagnosisController::class, 'continue']);
     Route::get('/ai-diagnosis/{id}', [AIDiagnosisController::class, 'show']);
     Route::get('/ai-diagnosis/{id}/export', [AIDiagnosisController::class, 'exportPdf']);
-// ───────────────────── 患者端 ─────────────────────
-// 前缀：/api/patient | 角色：patient
-
-Route::prefix('patient')
-    ->middleware(['auth:sanctum', 'role:patient'])
-    ->group(function () {
-        // 预约管理
-        Route::get('/dashboard', [PatientController::class, 'dashboard']);
-        Route::get('/doctors', [PatientController::class, 'doctors']);
-        Route::get('/doctors/{id}', [PatientController::class, 'doctorDetail']);
-        Route::post('/appointments', [PatientController::class, 'store']);
-        Route::get('/appointments', [PatientController::class, 'index']);
-        Route::get('/appointments/{id}', [PatientController::class, 'show']);
-        Route::delete('/appointments/{id}', [PatientController::class, 'cancel']);
-        Route::get('/appointments/available-slots', [PatientController::class, 'availableSlots']);
-        Route::post('/appointments/{id}/review', [PatientController::class, 'review']);
-
-        // AI 文字诊断
-        Route::post('/ai-diagnosis', [AIDiagnosisController::class, 'store']);
-        Route::get('/ai-diagnosis', [AIDiagnosisController::class, 'index']);
-        Route::get('/ai-diagnosis/{id}', [AIDiagnosisController::class, 'show']);
-        Route::post('/ai-diagnosis/continue', [AIDiagnosisController::class, 'continue']);
-        Route::get('/ai-diagnosis/{id}/export', [AIDiagnosisController::class, 'exportPdf']);
 
     // 病历
     Route::get('/medical-records', [MedicalRecordController::class, 'index']);
@@ -98,8 +74,7 @@ Route::prefix('patient')
     Route::get('/medication-reminders', [PrescriptionController::class, 'medicationReminders']);
 });
 
-// ═══════════════════ ZZT: 医生端-病历与处方 (8) ═══════════════════
-
+// ==================== ZZT: 医生端-病历与处方 (8) ====================
 Route::prefix('doctor')->middleware(['auth:sanctum', 'role:doctor'])->group(function () {
     Route::post('/medical-records', [DoctorMedicalRecordController::class, 'store']);
     Route::put('/medical-records/{id}', [DoctorMedicalRecordController::class, 'update']);
@@ -109,10 +84,15 @@ Route::prefix('doctor')->middleware(['auth:sanctum', 'role:doctor'])->group(func
     Route::post('/prescriptions', [DoctorPrescriptionController::class, 'store']);
     Route::get('/prescriptions/{id}', [DoctorPrescriptionController::class, 'show']);
     Route::get('/prescriptions', [DoctorPrescriptionController::class, 'index']);
+
+    // 模板
+    Route::post('/medical-record-templates', [TemplateController::class, 'storeMedicalRecord']);
+    Route::get('/medical-record-templates', [TemplateController::class, 'indexMedicalRecord']);
+    Route::post('/prescription-templates', [TemplateController::class, 'storePrescription']);
+    Route::get('/prescription-templates', [TemplateController::class, 'indexPrescription']);
 });
 
-// ═══════════════════ GYZ: 医生端-接诊管理 (6) ═══════════════════
-
+// ==================== GYZ: 医生端-接诊管理 (8) ====================
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(function () {
     Route::get('/dashboard', [DoctorAppointmentController::class, 'dashboard']);
     Route::get('/appointments', [DoctorAppointmentController::class, 'index']);
@@ -120,38 +100,49 @@ Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(func
     Route::post('/appointments/{id}/call', [DoctorAppointmentController::class, 'call']);
     Route::post('/appointments/{id}/start', [DoctorAppointmentController::class, 'start']);
     Route::post('/appointments/{id}/complete', [DoctorAppointmentController::class, 'complete']);
+    Route::post('/appointments/{id}/reject', [DoctorAppointmentController::class, 'reject']);
+    Route::get('/schedules', [DoctorScheduleController::class, 'index']);
+    Route::put('/schedules', [DoctorScheduleController::class, 'update']);
 });
 
-// ═══════════════════ GYZ: 医生端-AI图文诊断 (3) ═══════════════════
-
+// ==================== GYZ: 医生端-AI图文诊断 (3) ====================
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(function () {
     Route::post('/ai-diagnosis', [DoctorAiDiagnosisController::class, 'store']);
     Route::get('/ai-diagnosis', [DoctorAiDiagnosisController::class, 'index']);
     Route::get('/ai-diagnosis/{id}', [DoctorAiDiagnosisController::class, 'show']);
 });
 
-// ═══════════════════ GYZ: 医生端-药品库存管理 (5) ═══════════════════
-
+// ==================== GYZ: 医生端-药品库存管理 (7) ====================
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(function () {
     Route::get('/drugs', [DrugController::class, 'index']);
     Route::post('/drugs', [DrugController::class, 'store']);
     Route::put('/drugs/{id}', [DrugController::class, 'update']);
     Route::post('/drugs/{id}/stock-in', [DrugController::class, 'stockIn']);
     Route::get('/stock-movements', [DrugController::class, 'stockMovements']);
+    Route::get('/drugs/low-stock', [DrugController::class, 'lowStock']);
+    Route::post('/drugs/batch-stock-in', [DrugController::class, 'batchStockIn']);
 });
 
-// ═══════════════════ GYZ: 管理员端-用户管理 (5) ═══════════════════
+// ==================== 通知消息 (4, 所有已登录角色) ====================
+Route::middleware('auth:sanctum')->prefix('notifications')->group(function () {
+    Route::get('/', [NotificationController::class, 'index']);
+    Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::put('/{id}/read', [NotificationController::class, 'markRead']);
+    Route::put('/read-all', [NotificationController::class, 'markAllRead']);
+});
 
+// ==================== GYZ: 管理员端-用户管理 (7) ====================
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/users', [AdminUserController::class, 'index']);
     Route::post('/users', [AdminUserController::class, 'store']);
     Route::get('/users/{id}', [AdminUserController::class, 'show']);
     Route::put('/users/{id}', [AdminUserController::class, 'update']);
     Route::put('/users/{id}/status', [AdminUserController::class, 'toggleStatus']);
+    Route::get('/users/{id}/operation-logs', [AdminSystemController::class, 'operationLogs']);
+    Route::post('/users/batch-import', [AdminUserController::class, 'batchImport']);
 });
 
-// ═══════════════════ GYZ: 管理员端-数据监控 (7) ═══════════════════
-
+// ==================== GYZ: 管理员端-数据监控 (11) ====================
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'dashboard']);
     Route::get('/appointments', [AdminDashboardController::class, 'appointments']);
@@ -160,36 +151,15 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/ai-diagnoses', [AdminDashboardController::class, 'aiDiagnoses']);
     Route::get('/drugs', [AdminDashboardController::class, 'drugs']);
     Route::get('/stock-movements', [AdminDashboardController::class, 'stockMovements']);
+    Route::get('/statistics/doctor-workload', [AdminSystemController::class, 'doctorWorkload']);
+    Route::get('/statistics/drug-consumption', [AdminSystemController::class, 'drugConsumption']);
+    Route::get('/statistics/monthly-trend', [AdminSystemController::class, 'monthlyTrend']);
+    Route::get('/statistics/drug-overview', [AdminSystemController::class, 'drugOverview']);
 });
-        // 处方
-        Route::get('/prescriptions', [PrescriptionController::class, 'index']);
-        Route::get('/prescriptions/{id}', [PrescriptionController::class, 'show']);
-        Route::post('/prescriptions/{id}/confirm', [PrescriptionController::class, 'confirm']);
-        Route::post('/prescriptions/{id}/refill', [PrescriptionController::class, 'refill']);
-        Route::get('/medication-reminders', [PrescriptionController::class, 'medicationReminders']);
-    });
 
-// ───────────────────── 医生端 ─────────────────────
-// 前缀：/api/doctor | 角色：doctor
-
-Route::prefix('doctor')
-    ->middleware(['auth:sanctum', 'role:doctor'])
-    ->group(function () {
-        // 病历
-        Route::post('/medical-records', [DoctorMedicalRecordController::class, 'store']);
-        Route::put('/medical-records/{id}', [DoctorMedicalRecordController::class, 'update']);
-        Route::get('/medical-records/{id}', [DoctorMedicalRecordController::class, 'show']);
-        Route::get('/medical-records', [DoctorMedicalRecordController::class, 'index']);
-        Route::get('/medical-records/compare', [DoctorMedicalRecordController::class, 'compare']);
-
-        // 处方
-        Route::post('/prescriptions', [DoctorPrescriptionController::class, 'store']);
-        Route::get('/prescriptions/{id}', [DoctorPrescriptionController::class, 'show']);
-        Route::get('/prescriptions', [DoctorPrescriptionController::class, 'index']);
-
-        // 模板管理
-        Route::post('/medical-record-templates', [TemplateController::class, 'storeMedicalRecord']);
-        Route::get('/medical-record-templates', [TemplateController::class, 'indexMedicalRecord']);
-        Route::post('/prescription-templates', [TemplateController::class, 'storePrescription']);
-        Route::get('/prescription-templates', [TemplateController::class, 'indexPrescription']);
-    });
+// ==================== GYZ: 管理员端-系统管理 (3) ====================
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
+    Route::get('/operation-logs', [AdminSystemController::class, 'operationLogs']);
+    Route::get('/system-configs', [AdminSystemController::class, 'configs']);
+    Route::put('/system-configs', [AdminSystemController::class, 'updateConfigs']);
+});

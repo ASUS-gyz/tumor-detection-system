@@ -5,7 +5,8 @@
       "Bash(composer --version)",
       "Bash(php -v)",
       "Bash(php -m)",
-      "Bash(php -r ' *)"
+      "Bash(php -r ' *)",
+      "Bash(grep \"：\\\\`\" \"docs/conclusion/肿瘤科智能检测门诊系统后端接口文档-v2.md\")"
     ],
     "additionalDirectories": [
       "c:\\projects\\tumor-detection-system\\app\\Http"
