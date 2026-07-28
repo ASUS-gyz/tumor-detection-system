@@ -207,6 +207,50 @@ class MedicalRecordController extends Controller
                 'created_at' => $r->created_at,
             ])->values(),
             'count' => $records->count(),
+    // ───────────────────── 5. 多份病历对比 ─────────────────────
+
+    /**
+     * 多份病历对比
+     *
+     * GET /api/doctor/medical-records/compare
+     * 功能：选择多份病历进行对比分析。
+     * 参数：ids（必填，逗号分隔的病历ID列表，最多5份）
+     */
+    public function compare(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids' => ['required', 'string', 'regex:/^\d+(,\d+)*$/'],
+        ], [
+            'ids.required' => '请选择要对比的病历',
+            'ids.regex' => '病历ID格式不正确',
+        ]);
+
+        $doctorId = $request->user()->id;
+        $ids = array_slice(array_unique(explode(',', $request->input('ids'))), 0, 5);
+
+        $records = MedicalRecord::with(['patient:id,name', 'appointment:id,appointment_date'])
+            ->where('doctor_id', $doctorId)
+            ->whereIn('id', $ids)
+            ->get();
+
+        if ($records->isEmpty()) {
+            throw new BusinessException('未找到指定的病历', ResponseCode::DATA_NOT_FOUND);
+        }
+
+        $list = $records->map(fn ($r) => [
+            'id' => $r->id,
+            'patient_name' => $r->patient->name ?? '',
+            'appointment_date' => $r->appointment->appointment_date ?? null,
+            'symptoms' => $r->symptoms,
+            'imaging_findings' => $r->imaging_findings,
+            'preliminary_diagnosis' => $r->preliminary_diagnosis,
+            'treatment_plan' => $r->treatment_plan,
+            'created_at' => $r->created_at,
+        ])->values();
+
+        return Result::success('成功', [
+            'records' => $list,
+            'count' => $list->count(),
         ]);
     }
 }

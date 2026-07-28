@@ -218,6 +218,38 @@ class PrescriptionController extends Controller
         return Result::success('续方申请已提交', [
             'original_prescription_id' => $prescription->id,
             'items' => $prescription->items->map(fn ($i) => ['drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'quantity' => $i->quantity]),
+    // ───────────────────── 4. 处方续方申请 ─────────────────────
+
+    /**
+     * 处方续方申请
+     *
+     * POST /api/patient/prescriptions/{id}/refill
+     * 功能：基于已完成的处方，申请医生开具续方。
+     * 约束：仅可续方已取药的处方
+     */
+    public function refill(int $id, Request $request): JsonResponse
+    {
+        $patientId = $request->user()->id;
+
+        $prescription = Prescription::with('items.drug')
+            ->where('patient_id', $patientId)
+            ->find($id);
+
+        if (! $prescription) {
+            throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND);
+        }
+
+        if ($prescription->status !== 'dispensed') {
+            throw new BusinessException('仅可续方已取药的处方', ResponseCode::STATUS_NOT_ALLOWED);
+        }
+
+        return Result::success('续方申请已提交', [
+            'original_prescription_id' => $prescription->id,
+            'items' => $prescription->items->map(fn ($i) => [
+                'drug_name' => $i->drug->name ?? '',
+                'dosage' => $i->dosage,
+                'quantity' => $i->quantity,
+            ]),
             'message' => '续方申请已提交，请等待医生处理',
         ]);
     }
@@ -233,5 +265,40 @@ class PrescriptionController extends Controller
             }
         }
         return Result::success('成功', ['reminders' => $reminders, 'total' => count($reminders)]);
+    // ───────────────────── 5. 每日用药提醒 ─────────────────────
+
+    /**
+     * 每日用药提醒列表
+     *
+     * GET /api/patient/medication-reminders
+     * 功能：返回当前患者所有待取药处方的用药提醒。
+     */
+    public function medicationReminders(Request $request): JsonResponse
+    {
+        $patientId = $request->user()->id;
+
+        $prescriptions = Prescription::with('items.drug', 'doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->where('status', 'pending')
+            ->get();
+
+        $reminders = [];
+        foreach ($prescriptions as $p) {
+            foreach ($p->items as $item) {
+                $reminders[] = [
+                    'prescription_id' => $p->id,
+                    'drug_name' => $item->drug->name ?? '',
+                    'dosage' => $item->dosage,
+                    'instructions' => $item->instructions,
+                    'doctor_name' => $p->doctor->name ?? '',
+                    'created_at' => $p->created_at,
+                ];
+            }
+        }
+
+        return Result::success('成功', [
+            'reminders' => $reminders,
+            'total' => count($reminders),
+        ]);
     }
 }
