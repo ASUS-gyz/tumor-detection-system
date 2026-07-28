@@ -10,13 +10,9 @@ use App\Http\Controllers\Api\GYZ\DrugController;
 use App\Http\Controllers\Api\GYZ\NotificationController;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes — GYZ 模块（26 + 13 = 39 接口）
-|--------------------------------------------------------------------------
-*/
+//GYZ
 
-// ===== 医生端-接诊管理（8 接口）=====
+// 医生端-接诊管理
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->name('doctor.')->group(function () {
     Route::get('/dashboard', [DoctorAppointmentController::class, 'dashboard']);
     Route::get('/appointments', [DoctorAppointmentController::class, 'index']);
@@ -30,14 +26,14 @@ Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->name('doct
     Route::put('/schedules', [DoctorScheduleController::class, 'update']);     // 新增
 });
 
-// ===== 医生端-AI图文诊断（3 接口）=====
+// 医生端-AI图文诊断（3 接口）
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->name('doctor.')->group(function () {
     Route::post('/ai-diagnosis', [DoctorAiDiagnosisController::class, 'store']);
     Route::get('/ai-diagnosis', [DoctorAiDiagnosisController::class, 'index']);
     Route::get('/ai-diagnosis/{id}', [DoctorAiDiagnosisController::class, 'show']);
 });
 
-// ===== 医生端-药品库存管理（7 接口）=====
+// 医生端-药品库存管理（7 接口）
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->name('doctor.')->group(function () {
     Route::get('/drugs', [DrugController::class, 'index']);
     Route::post('/drugs', [DrugController::class, 'store']);
@@ -48,7 +44,7 @@ Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->name('doct
     Route::post('/drugs/batch-stock-in', [DrugController::class, 'batchStockIn']); // 新增
 });
 
-// ===== 通知消息（4 接口，所有已登录角色）=====
+// 通知消息
 Route::middleware('auth:sanctum')->prefix('notifications')->name('notifications.')->group(function () {
     Route::get('/', [NotificationController::class, 'index']);                 // 新增
     Route::get('/unread-count', [NotificationController::class, 'unreadCount']); // 新增
@@ -56,7 +52,7 @@ Route::middleware('auth:sanctum')->prefix('notifications')->name('notifications.
     Route::put('/read-all', [NotificationController::class, 'markAllRead']);   // 新增
 });
 
-// ===== 管理员端-用户管理（7 接口）=====
+// 管理员端-用户管理
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/users', [AdminUserController::class, 'index']);
     Route::post('/users', [AdminUserController::class, 'store']);
@@ -67,7 +63,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->name('admin.
     Route::post('/users/batch-import', [AdminUserController::class, 'batchImport']);            // 新增
 });
 
-// ===== 管理员端-数据监控（11 接口）=====
+// 管理员端-数据监控
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'dashboard']);
     Route::get('/appointments', [AdminDashboardController::class, 'appointments']);
@@ -83,7 +79,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->name('admin.
     Route::get('/statistics/drug-overview', [AdminSystemController::class, 'drugOverview']);       // 新增
 });
 
-// ===== 管理员端-系统管理（3 接口）=====
+// 管理员端-系统管理
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/operation-logs', [AdminSystemController::class, 'operationLogs']);      // 新增
     Route::get('/system-configs', [AdminSystemController::class, 'configs']);             // 新增
