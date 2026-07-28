@@ -22,8 +22,6 @@ class AiDiagnosis extends Model
         ];
     }
 
-    // === 关联 ===
-
     public function patient()
     {
         return $this->belongsTo(User::class, 'patient_id');
@@ -38,8 +36,6 @@ class AiDiagnosis extends Model
     {
         return $this->belongsTo(Appointment::class);
     }
-
-    // === 判断 ===
 
     public function isImageType(): bool
     {
