@@ -185,6 +185,25 @@ class DoctorAppointmentService
         return ['id' => $appointment->id, 'status' => 'completed', 'updated_at' => $appointment->updated_at->toIso8601String()];
     }
 
+    /**
+     * 医生拒绝预约：pending → cancelled
+     */
+    public function reject(int $doctorId, int $appointmentId): array
+    {
+        $appointment = $this->findOwn($doctorId, $appointmentId);
+        if (! $appointment->isPending()) {
+            throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
+        }
+        $appointment->update(['status' => 'cancelled']);
+
+        Log::channel('business')->warning('医生拒绝预约', [
+            'doctor_id' => $doctorId,
+            'appointment_id' => $appointmentId,
+        ]);
+
+        return ['id' => $appointment->id, 'status' => 'cancelled', 'updated_at' => $appointment->updated_at->toIso8601String()];
+    }
+
     private function findOwn(int $doctorId, int $id): Appointment
     {
         return Appointment::where('doctor_id', $doctorId)->find($id)

@@ -53,4 +53,26 @@ class DrugController extends Controller
             $this->movementService->list($request->only(['page', 'size', 'drug_id', 'type', 'date_from', 'date_to']))
         ));
     }
+
+    public function lowStock(Request $request): JsonResponse
+    {
+        return Result::success(data: PaginationHelper::format(
+            $this->drugService->list($request->merge(['low_stock' => true])->only(['page', 'size', 'low_stock']))
+        ));
+    }
+
+    public function batchStockIn(Request $request): JsonResponse
+    {
+        $results = [];
+        foreach ($request->input('items', []) as $item) {
+            $results[] = $this->drugService->stockIn(
+                $item['drug_id'],
+                $item['quantity'],
+                $item['remark'] ?? null,
+                auth()->id()
+            );
+        }
+
+        return Result::success(msg: '批量入库完成', data: $results);
+    }
 }
