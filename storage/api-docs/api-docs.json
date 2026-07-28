@@ -1,0 +1,45 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "肿瘤科智能检测门诊系统 API",
+        "description": "肿瘤科智能检测门诊系统后端接口文档",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000/api",
+            "description": "本地开发服务器"
+        }
+    ],
+    "paths": {
+        "/": {
+            "get": {
+                "tags": [
+                    "健康检查"
+                ],
+                "summary": "API 健康检查",
+                "operationId": "74d679b32a54926ad843be8c64f79163",
+                "responses": {
+                    "200": {
+                        "description": "健康状态正常"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "健康检查",
+            "description": "健康检查"
+        }
+    ]
+}
