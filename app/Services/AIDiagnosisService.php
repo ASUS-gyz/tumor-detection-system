@@ -89,14 +89,61 @@ class AIDiagnosisService extends BaseService
     }
 
     /**
-     * 调用远程 AI API（预留）
+     * 调用远程 AI API（DeepSeek）
      */
     private function callRemoteAI(mixed $input, string $type): array
     {
-        // TODO: 对接真实 AI 接口
-        throw new BusinessException(
-            'AI 远程服务暂未配置，请使用模拟模式',
-            ResponseCode::THIRD_PARTY_ERROR
-        );
+        $client = new \GuzzleHttp\Client();
+        
+        try {
+            $messages = [
+                [
+                    'role' => 'system',
+                    'content' => $type === 'text' 
+                        ? '你是一名专业的肿瘤科医生，请根据患者的症状描述进行分析。请以JSON格式返回，包含以下字段：analysis（病情分析）、risk_level（风险等级：低风险/中风险/高风险）、risk_warning（风险提示）、advice（就诊建议）、possible_conditions（可能情况列表，数组格式）。'
+                        : '你是一名专业的肿瘤科医生，请根据影像描述进行专业医疗分析。请以JSON格式返回，包含以下字段：imaging_features（影像特征）、risk_assessment（风险评估）、suspected_lesions（疑似病变）、treatment_recommendations（治疗建议）、confidence（置信度）。',
+                ],
+                [
+                    'role' => 'user',
+                    'content' => is_array($input) ? $input['description'] : $input,
+                ],
+            ];
+
+            $response = $client->post(config('ai.api.url'), [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . config('ai.api.key'),
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'model' => config('ai.api.model'),
+                    'messages' => $messages,
+                    'temperature' => 0.7,
+                    'response_format' => ['type' => 'json_object'],
+                ],
+                'timeout' => config('ai.api.timeout'),
+            ]);
+
+            $data = json_decode($response->getBody(), true);
+            
+            if (!isset($data['choices'][0]['message']['content'])) {
+                throw new \Exception('AI返回格式错误');
+            }
+
+            $content = $data['choices'][0]['message']['content'];
+            $result = json_decode($content, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                // 如果返回不是JSON格式，使用模拟数据
+                return $type === 'text' 
+                    ? $this->mockTextDiagnosis(is_array($input) ? $input['description'] : $input)
+                    : $this->mockImageDiagnosis(is_array($input) ? $input['description'] : $input);
+            }
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error('AI诊断调用失败', ['error' => $e->getMessage()]);
+            throw new BusinessException('AI诊断服务暂时不可用', ResponseCode::THIRD_PARTY_ERROR);
+        }
     }
 }

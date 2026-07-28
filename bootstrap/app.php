@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\Log;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
-        api: __DIR__.'/../routes/api.php',
-        commands: __DIR__.'/../routes/console.php',
+        web: __DIR__ . '/../routes/web.php',
+        api: __DIR__ . '/../routes/api.php',
+        commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -24,20 +24,18 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 别名中间件
         $middleware->alias([
-            'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // 对所有请求统一返回 JSON（开发手册规范）
+        // 对所有请求统一返回 JSON
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => true,
+            fn(Request $_request) => true,
         );
 
         // 参数验证异常
-        // 若由 BaseRequest::failedValidation() 抛出，已携带 Result 响应则透传
-        // 否则（手动 Validator）按统一格式包装
         $exceptions->render(
-            fn (\Illuminate\Validation\ValidationException $e) => $e->response
+            fn(\Illuminate\Validation\ValidationException $e) => $e->response
                 ?? \App\Support\Result::error(
                     \App\Enums\ResponseCode::PARAM_ERROR,
                     collect($e->errors())->flatten()->first()
@@ -46,21 +44,21 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 未登录
         $exceptions->render(
-            fn (\Illuminate\Auth\AuthenticationException $e) => \App\Support\Result::error(
+            fn(\Illuminate\Auth\AuthenticationException $_e) => \App\Support\Result::error(
                 \App\Enums\ResponseCode::UNAUTHORIZED
             )
         );
 
         // 模型不存在
         $exceptions->render(
-            fn (\Illuminate\Database\Eloquent\ModelNotFoundException $e) => \App\Support\Result::error(
+            fn(\Illuminate\Database\Eloquent\ModelNotFoundException $_e) => \App\Support\Result::error(
                 \App\Enums\ResponseCode::DATA_NOT_FOUND
             )
         );
 
         // 路由不存在
         $exceptions->render(
-            fn (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e) => \App\Support\Result::error(
+            fn(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $_e) => \App\Support\Result::error(
                 \App\Enums\ResponseCode::DATA_NOT_FOUND,
                 '接口不存在'
             )
@@ -68,7 +66,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 业务异常
         $exceptions->render(
-            fn (\App\Exceptions\BusinessException $e) => \App\Support\Result::error(
+            fn(\App\Exceptions\BusinessException $e) => \App\Support\Result::error(
                 $e->codeEnum,
                 $e->getMessage()
             )
