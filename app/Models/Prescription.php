@@ -19,6 +19,12 @@ class Prescription extends Model
     ];
 
     /** 关联预约 */
+class Prescription extends Model
+{
+    protected $fillable = [
+        'appointment_id', 'patient_id', 'doctor_id', 'status',
+    ];
+
     public function appointment()
     {
         return $this->belongsTo(Appointment::class);

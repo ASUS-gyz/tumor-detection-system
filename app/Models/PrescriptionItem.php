@@ -20,6 +20,12 @@ class PrescriptionItem extends Model
     ];
 
     /** 关联处方 */
+class PrescriptionItem extends Model
+{
+    protected $fillable = [
+        'prescription_id', 'drug_id', 'quantity', 'dosage', 'instructions',
+    ];
+
     public function prescription()
     {
         return $this->belongsTo(Prescription::class);

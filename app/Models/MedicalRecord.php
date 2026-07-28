@@ -22,6 +22,13 @@ class MedicalRecord extends Model
     ];
 
     /** 关联预约 */
+class MedicalRecord extends Model
+{
+    protected $fillable = [
+        'appointment_id', 'patient_id', 'doctor_id',
+        'symptoms', 'imaging_findings', 'preliminary_diagnosis', 'treatment_plan',
+    ];
+
     public function appointment()
     {
         return $this->belongsTo(Appointment::class);

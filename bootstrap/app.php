@@ -20,6 +20,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // 中间件别名
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
+        // API 路由组中间件
+        $middleware->api(append: [
+            \App\Http\Middleware\ApiLogMiddleware::class,
+        ]);
+
+        // 别名中间件
+        $middleware->alias([
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

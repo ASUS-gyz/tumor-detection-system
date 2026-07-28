@@ -27,6 +27,14 @@ class Appointment extends Model
     }
 
     /** 患者 */
+class Appointment extends Model
+{
+    protected $fillable = [
+        'patient_id', 'doctor_id', 'appointment_date', 'appointment_time', 'status',
+    ];
+
+    // === 关联 ===
+
     public function patient()
     {
         return $this->belongsTo(User::class, 'patient_id');
@@ -80,5 +88,26 @@ class Appointment extends Model
     public function canCancel(): bool
     {
         return $this->status === 'pending';
+    }
+    public function aiDiagnoses()
+    {
+        return $this->hasMany(AiDiagnosis::class);
+    }
+
+    // === 状态判断 ===
+
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isCalled(): bool
+    {
+        return $this->status === 'called';
+    }
+
+    public function isInProgress(): bool
+    {
+        return $this->status === 'in_progress';
     }
 }
