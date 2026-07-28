@@ -190,4 +190,23 @@ class MedicalRecordController extends Controller
             'updated_at' => $record->updated_at,
         ];
     }
+
+    public function compare(Request $request): JsonResponse
+    {
+        $request->validate(['ids' => ['required', 'string', 'regex:/^\d+(,\d+)*$/']]);
+        $ids = array_slice(array_unique(explode(',', $request->input('ids'))), 0, 5);
+        $records = MedicalRecord::with(['patient:id,name', 'appointment:id,appointment_date'])
+            ->where('doctor_id', $request->user()->id)->whereIn('id', $ids)->get();
+        if ($records->isEmpty()) { throw new BusinessException('未找到指定的病历', ResponseCode::DATA_NOT_FOUND); }
+        return Result::success('成功', [
+            'records' => $records->map(fn ($r) => [
+                'id' => $r->id, 'patient_name' => $r->patient->name ?? '',
+                'appointment_date' => $r->appointment->appointment_date ?? null,
+                'symptoms' => $r->symptoms, 'imaging_findings' => $r->imaging_findings,
+                'preliminary_diagnosis' => $r->preliminary_diagnosis, 'treatment_plan' => $r->treatment_plan,
+                'created_at' => $r->created_at,
+            ])->values(),
+            'count' => $records->count(),
+        ]);
+    }
 }

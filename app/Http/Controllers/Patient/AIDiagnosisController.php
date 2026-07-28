@@ -141,4 +141,40 @@ class AIDiagnosisController extends Controller
             'created_at' => $diagnosis->created_at,
         ];
     }
+
+    public function continue(Request $request): JsonResponse
+    {
+        $request->validate([
+            'diagnosis_id' => ['required', 'integer', 'exists:ai_diagnoses,id'],
+            'question' => ['required', 'string', 'min:2', 'max:1000'],
+        ]);
+        $patientId = $request->user()->id;
+        $previous = AIDiagnosis::where('patient_id', $patientId)->where('type', 'text')->find($request->input('diagnosis_id'));
+        if (! $previous) { throw new BusinessException('诊断记录不存在', ResponseCode::DATA_NOT_FOUND); }
+        $context = '原始症状：' . ($previous->symptom_description ?? '') . "\n上次分析：" . ($previous->analysis ?? '') . "\n患者追问：" . $request->input('question');
+        $result = $this->aiService->textDiagnosis($context, $patientId);
+        $diagnosis = AIDiagnosis::create([
+            'type' => 'text', 'patient_id' => $patientId,
+            'symptom_description' => $request->input('question'),
+            'analysis' => $result['analysis'] ?? '', 'risk_level' => $result['risk_level'] ?? '低风险',
+            'risk_warning' => $result['risk_warning'] ?? null, 'advice' => $result['advice'] ?? '',
+            'possible_conditions' => $result['possible_conditions'] ?? [],
+        ]);
+        return Result::success('追问回复', ['previous_id' => $previous->id, 'diagnosis' => $this->formatDetail($diagnosis)]);
+    }
+
+    public function exportPdf(int $id, Request $request): JsonResponse
+    {
+        $diagnosis = AIDiagnosis::where('patient_id', $request->user()->id)->where('type', 'text')->find($id);
+        if (! $diagnosis) { throw new BusinessException('诊断记录不存在', ResponseCode::DATA_NOT_FOUND); }
+        return Result::success('报告导出数据', ['report' => [
+            'title' => '肿瘤科 AI 智能诊断报告',
+            'report_no' => 'AI-' . str_pad($diagnosis->id, 6, '0', STR_PAD_LEFT),
+            'patient_name' => $request->user()->name, 'created_at' => $diagnosis->created_at,
+            'risk_level' => $diagnosis->risk_level, 'analysis' => $diagnosis->analysis,
+            'advice' => $diagnosis->advice, 'risk_warning' => $diagnosis->risk_warning,
+            'possible_conditions' => $diagnosis->possible_conditions,
+            'disclaimer' => '本报告由 AI 生成，仅供参考，不构成医疗建议。',
+        ]]);
+    }
 }

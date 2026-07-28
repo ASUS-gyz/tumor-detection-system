@@ -357,4 +357,43 @@ class PatientController extends Controller
             'department' => $appointment->doctor->department ?? '',
         ];
     }
+
+    public function availableSlots(Request $request): JsonResponse
+    {
+        $request->validate([
+            'doctor_id' => ['required', 'integer', 'exists:users,id,role,doctor,status,active'],
+            'date' => ['required', 'date', 'after_or_equal:today'],
+        ]);
+        $allSlots = ['08:30', '09:15', '10:00', '10:45', '13:30', '14:15', '15:00', '15:45'];
+        $booked = Appointment::where('doctor_id', $request->input('doctor_id'))
+            ->where('appointment_date', $request->input('date'))
+            ->whereIn('status', ['pending', 'called', 'in_progress'])
+            ->pluck('appointment_time')->toArray();
+        return Result::success('成功', [
+            'date' => $request->input('date'),
+            'all_slots' => $allSlots,
+            'booked_slots' => $booked,
+            'available_slots' => array_values(array_diff($allSlots, $booked)),
+        ]);
+    }
+
+    public function review(int $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'content' => ['nullable', 'string', 'max:500'],
+        ]);
+        $appointment = Appointment::where('patient_id', $request->user()->id)->find($id);
+        if (! $appointment) {
+            throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND);
+        }
+        if ($appointment->status !== 'completed') {
+            throw new BusinessException('仅可评价已完成的就诊', ResponseCode::STATUS_NOT_ALLOWED);
+        }
+        return Result::success('评价提交成功', [
+            'appointment_id' => $appointment->id,
+            'rating' => (int) $request->input('rating'),
+            'content' => $request->input('content'),
+        ]);
+    }
 }

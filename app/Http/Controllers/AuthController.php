@@ -264,4 +264,62 @@ class AuthController extends Controller
 
         return $data;
     }
+
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'email' => ['required', 'string', 'email', 'exists:users,email'],
+        ]);
+        $user = User::where('email', $request->input('email'))->first();
+        $token = \Illuminate\Support\Str::random(60);
+        \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $user->email],
+            ['token' => $token, 'created_at' => now()]
+        );
+        return Result::success('重置链接已发送', ['reset_token' => $token]);
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'email' => ['required', 'string', 'email', 'exists:users,email'],
+            'token' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6', 'max:100', 'confirmed'],
+        ]);
+        $record = \Illuminate\Support\Facades\DB::table('password_reset_tokens')
+            ->where('email', $request->input('email'))->first();
+        if (! $record || $record->token !== $request->input('token')) {
+            throw new BusinessException('重置令牌无效或已过期', ResponseCode::PARAM_ILLEGAL);
+        }
+        $user = User::where('email', $request->input('email'))->first();
+        $user->password = $request->input('password');
+        $user->save();
+        \Illuminate\Support\Facades\DB::table('password_reset_tokens')
+            ->where('email', $request->input('email'))->delete();
+        return Result::success('密码重置成功');
+    }
+
+    public function verifyEmail(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if ($user->email_verified_at) {
+            return Result::success('邮箱已验证');
+        }
+        $user->email_verified_at = now();
+        $user->save();
+        return Result::success('邮箱验证成功');
+    }
+
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $request->validate(['password' => ['required', 'string']]);
+        $user = $request->user();
+        if (! \Illuminate\Support\Facades\Hash::check($request->input('password'), $user->password)) {
+            throw new BusinessException('密码不正确', ResponseCode::PASSWORD_ERROR);
+        }
+        $user->tokens()->delete();
+        $user->status = 'disabled';
+        $user->save();
+        return Result::success('账号已注销');
+    }
 }
