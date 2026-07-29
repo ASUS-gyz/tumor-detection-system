@@ -39,6 +39,26 @@ class User extends Authenticatable
         ];
     }
 
+<<<<<<< Updated upstream
+=======
+    // ─── 角色判断 ───────────────────────────────────────────
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isDoctor(): bool
+    {
+        return $this->role === 'doctor';
+    }
+
+    public function isPatient(): bool
+    {
+        return $this->role === 'patient';
+    }
+
+>>>>>>> Stashed changes
     // ─── 关联关系 ───────────────────────────────────────────
 
     /** 作为患者的预约 */
