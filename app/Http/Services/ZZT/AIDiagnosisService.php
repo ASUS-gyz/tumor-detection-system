@@ -1,6 +1,8 @@
 <?php
 
-namespace App\Services;
+namespace App\Http\Services\ZZT;
+
+use App\Http\Services\BaseService;
 
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
@@ -93,10 +95,25 @@ class AIDiagnosisService extends BaseService
      */
     private function callRemoteAI(mixed $input, string $type): array
     {
-        // TODO: 对接真实 AI 接口
-        throw new BusinessException(
-            'AI 远程服务暂未配置，请使用模拟模式',
-            ResponseCode::THIRD_PARTY_ERROR
-        );
+        $client = new \GuzzleHttp\Client();
+        try {
+            $messages = [
+                ['role' => 'system', 'content' => $type === 'text'
+                    ? '你是肿瘤科医生，按JSON返回：analysis,risk_level(低/中/高风险),risk_warning,advice,possible_conditions(数组)'
+                    : '你是肿瘤科医生，按JSON返回：imaging_features,risk_assessment,suspected_lesions,treatment_recommendations,confidence'],
+                ['role' => 'user', 'content' => is_array($input) ? $input['description'] : $input],
+            ];
+            $response = $client->post(config('ai.api.url'), [
+                'headers' => ['Authorization' => 'Bearer '.config('ai.api.key'), 'Content-Type' => 'application/json'],
+                'json' => ['model' => config('ai.api.model'), 'messages' => $messages, 'temperature' => 0.7, 'response_format' => ['type' => 'json_object']],
+                'timeout' => config('ai.api.timeout'),
+            ]);
+            $data = json_decode($response->getBody(), true);
+            $result = json_decode($data['choices'][0]['message']['content'] ?? '{}', true);
+            return $result ?: ($type === 'text' ? $this->mockTextDiagnosis((string)$input) : $this->mockImageDiagnosis((string)($input['description'] ?? '')));
+        } catch (\Exception $e) {
+            Log::error('AI调用失败', ['error' => $e->getMessage()]);
+            throw new BusinessException('AI诊断服务暂时不可用', ResponseCode::THIRD_PARTY_ERROR);
+        }
     }
 }

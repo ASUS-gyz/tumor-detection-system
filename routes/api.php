@@ -68,11 +68,11 @@ Route::prefix('patient')->middleware(['auth:sanctum', 'role:patient'])->group(fu
 // ═══════════════════ ZZT: 医生端-病历与处方+模板 (12) ═══════════════════
 
 Route::prefix('doctor')->middleware(['auth:sanctum', 'role:doctor'])->group(function () {
+    Route::get('/medical-records/compare', [DoctorMedicalRecordController::class, 'compare']);
     Route::post('/medical-records', [DoctorMedicalRecordController::class, 'store']);
+    Route::get('/medical-records', [DoctorMedicalRecordController::class, 'index']);
     Route::put('/medical-records/{id}', [DoctorMedicalRecordController::class, 'update']);
     Route::get('/medical-records/{id}', [DoctorMedicalRecordController::class, 'show']);
-    Route::get('/medical-records', [DoctorMedicalRecordController::class, 'index']);
-    Route::get('/medical-records/compare', [DoctorMedicalRecordController::class, 'compare']);
     Route::post('/prescriptions', [DoctorPrescriptionController::class, 'store']);
     Route::get('/prescriptions/{id}', [DoctorPrescriptionController::class, 'show']);
     Route::get('/prescriptions', [DoctorPrescriptionController::class, 'index']);

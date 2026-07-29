@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Patient\AIDiagnosis;
+namespace App\Http\Requests\ZZT\AIDiagnosis;
 
 use App\Http\Requests\BaseRequest;
 

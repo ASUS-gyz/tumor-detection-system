@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Doctor;
+namespace App\Http\Requests\ZZT;
 
 use App\Http\Requests\BaseRequest;
 
