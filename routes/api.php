@@ -33,7 +33,6 @@ Route::prefix('auth')->group(function () {
         Route::put('/password', [AuthController::class, 'changePassword']);
         Route::post('/avatar', [AuthController::class, 'uploadAvatar']);
         Route::put('/profile', [AuthController::class, 'updateProfile']);
-        Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
         Route::delete('/account', [AuthController::class, 'deleteAccount']);
     });
 });
