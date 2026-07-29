@@ -124,12 +124,6 @@ class AuthController extends Controller
             'email' => ['required', 'string', 'email', 'exists:users,email'],
         ]);
         $user = User::where('email', $request->input('email'))->first();
-        ], [
-            'email.required' => '请输入邮箱地址',
-            'email.email' => '邮箱格式不正确',
-            'email.exists' => '该邮箱未注册',
-        ]);
-        $user = User::where('email', $request->input('email'))->first();
 
         // 生成 6 位数字验证码，60 分钟有效
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);

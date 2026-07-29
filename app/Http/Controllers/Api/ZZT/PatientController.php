@@ -386,40 +386,8 @@ class PatientController extends Controller
         ]);
     }
 
-        ], [
-            'doctor_id.required' => '请选择医生',
-            'doctor_id.exists' => '该医生不存在或已停诊',
-            'date.required' => '请选择日期',
-            'date.after_or_equal' => '日期不能早于今天',
-        ]);
-
-        $allSlots = ['08:30', '09:15', '10:00', '10:45', '13:30', '14:15', '15:00', '15:45'];
-
-        $bookedSlots = Appointment::where('doctor_id', $request->input('doctor_id'))
-            ->where('appointment_date', $request->input('date'))
-            ->whereIn('status', ['pending', 'called', 'in_progress'])
-            ->pluck('appointment_time')
-            ->toArray();
-
-        $available = array_values(array_diff($allSlots, $bookedSlots));
-
-        return Result::success('成功', [
-            'date' => $request->input('date'),
-            'all_slots' => $allSlots,
-            'booked_slots' => $bookedSlots,
-            'available_slots' => $available,
-        ]);
-    }
-
     // ───────────────────── 9. 就诊评价 ─────────────────────
 
-    /**
-     * 就诊评价
-     *
-     * POST /api/patient/appointments/{id}/review
-     * 参数：rating（1-5星）, content（评价内容）
-     * 约束：仅已完成的预约可评价
-     */
     public function review(int $id, Request $request): JsonResponse
     {
         $request->validate([
@@ -427,32 +395,8 @@ class PatientController extends Controller
             'content' => ['nullable', 'string', 'max:500'],
         ]);
         $appointment = Appointment::where('patient_id', $request->user()->id)->find($id);
-        if (! $appointment) {
-            throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND);
-        }
-        if ($appointment->status !== 'completed') {
-            throw new BusinessException('仅可评价已完成的就诊', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-        ], [
-            'rating.required' => '请选择评分',
-            'rating.min' => '评分最低1星',
-            'rating.max' => '评分最高5星',
-        ]);
-
-        $patientId = $request->user()->id;
-
-        $appointment = Appointment::where('patient_id', $patientId)->find($id);
-
-        if (! $appointment) {
-            throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND);
-        }
-
-        if ($appointment->status !== 'completed') {
-            throw new BusinessException('仅可评价已完成的就诊', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-
-        // 存储评价（简化实现：追加到 appointment 字段）
-        // 生产环境建议独立 reviews 表
+        if (! $appointment) { throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND); }
+        if ($appointment->status !== 'completed') { throw new BusinessException('仅可评价已完成的就诊', ResponseCode::STATUS_NOT_ALLOWED); }
         return Result::success('评价提交成功', [
             'appointment_id' => $appointment->id,
             'rating' => (int) $request->input('rating'),

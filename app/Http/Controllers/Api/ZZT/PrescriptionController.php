@@ -1,304 +1,133 @@
 <?php
 
-namespace App\Http\Controllers\Patient;
+namespace App\Http\Controllers\Api\ZZT;
 
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
+use App\Models\Drug;
 use App\Models\DrugStock;
 use App\Models\DrugStockChange;
 use App\Models\Prescription;
+use App\Models\PrescriptionItem;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-/**
- * 患者端处方控制器
- *
- * 提供患者查看本人处方列表、详情，以及确认取药（扣减库存）的功能。
- * 所有接口需 patient 角色认证，仅可操作本人数据。
- */
 class PrescriptionController extends Controller
 {
-    // ───────────────────── 1. 我的处方列表 ─────────────────────
+    // ─── 患者/医生共用: 处方列表 ───
 
-    /**
-     * 我的处方列表
-     *
-     * GET /api/patient/prescriptions
-     * 功能：分页返回当前患者的处方，支持按状态筛选。
-     * 参数：page, per_page, status（pending/dispensed）
-     */
     public function index(Request $request): JsonResponse
     {
-        $patientId = $request->user()->id;
+        $user = $request->user();
         $perPage = min((int) $request->input('per_page', 10), 50);
+        $query = Prescription::with('doctor:id,name,title')->withCount('items');
 
-        $query = Prescription::with('doctor:id,name,title')
-            ->withCount('items')
-            ->where('patient_id', $patientId);
-
-        if ($status = $request->input('status')) {
-            $query->where('status', $status);
+        if ($user->role === 'patient') {
+            $query->where('patient_id', $user->id);
+        } else {
+            $query->with('patient:id,name,phone')->where('doctor_id', $user->id);
         }
-
+        if ($status = $request->input('status')) { $query->where('status', $status); }
         $prescriptions = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-        $list = $prescriptions->getCollection()->map(function ($p) {
-            return [
-                'id' => $p->id,
-                'status' => $p->status,
-                'doctor_name' => $p->doctor->name ?? '',
-                'created_at' => $p->created_at,
-                'item_count' => $p->items_count,
-            ];
-        });
-
-        return Result::success('成功', [
-            'list' => $list->values(),
-            'page' => $prescriptions->currentPage(),
-            'size' => $prescriptions->perPage(),
-            'total' => $prescriptions->total(),
-            'total_pages' => $prescriptions->lastPage(),
-        ]);
+        if ($user->role === 'patient') {
+            $list = $prescriptions->getCollection()->map(fn ($p) => ['id' => $p->id, 'status' => $p->status, 'doctor_name' => $p->doctor->name ?? '', 'created_at' => $p->created_at, 'item_count' => $p->items_count]);
+        } else {
+            $list = $prescriptions->getCollection()->map(fn ($p) => ['id' => $p->id, 'patient_name' => $p->patient->name ?? '', 'patient_phone' => $p->patient->phone ?? '', 'status' => $p->status, 'item_count' => $p->items_count, 'created_at' => $p->created_at]);
+        }
+        return Result::success('成功', ['list' => $list->values(), 'page' => $prescriptions->currentPage(), 'size' => $prescriptions->perPage(), 'total' => $prescriptions->total(), 'total_pages' => $prescriptions->lastPage()]);
     }
 
-    // ───────────────────── 2. 处方详情 ─────────────────────
+    // ─── 患者/医生共用: 处方详情 ───
 
-    /**
-     * 处方详情
-     *
-     * GET /api/patient/prescriptions/{id}
-     * 功能：返回处方的完整信息，包含所有药品明细。
-     */
     public function show(int $id, Request $request): JsonResponse
     {
-        $patientId = $request->user()->id;
-
-        $prescription = Prescription::with([
-                'doctor:id,name,title',
-                'items.drug:id,name,specification',
-            ])
-            ->where('patient_id', $patientId)
-            ->find($id);
-
-        if (! $prescription) {
-            throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND);
-        }
-
+        $user = $request->user();
+        $query = Prescription::with(['doctor:id,name,title', 'patient:id,name,phone', 'items.drug:id,name,specification']);
+        $query = $user->role === 'patient' ? $query->where('patient_id', $user->id) : $query->where('doctor_id', $user->id);
+        $prescription = $query->find($id);
+        if (! $prescription) { throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND); }
         return Result::success('成功', [
-            'id' => $prescription->id,
-            'status' => $prescription->status,
-            'doctor' => [
-                'id' => $prescription->doctor->id ?? null,
-                'name' => $prescription->doctor->name ?? '',
-                'title' => $prescription->doctor->title ?? '',
-            ],
-            'items' => $prescription->items->map(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'drug_name' => $item->drug->name ?? '',
-                    'specification' => $item->drug->specification ?? '',
-                    'quantity' => $item->quantity,
-                    'dosage' => $item->dosage,
-                    'instructions' => $item->instructions,
-                ];
-            })->values(),
+            'id' => $prescription->id, 'status' => $prescription->status,
+            'doctor' => ['id' => $prescription->doctor->id ?? null, 'name' => $prescription->doctor->name ?? '', 'title' => $prescription->doctor->title ?? ''],
+            'patient' => ['id' => $prescription->patient->id ?? null, 'name' => $prescription->patient->name ?? '', 'phone' => $prescription->patient->phone ?? ''],
+            'items' => $prescription->items->map(fn ($i) => ['id' => $i->id, 'drug_id' => $i->drug_id, 'drug_name' => $i->drug->name ?? '', 'specification' => $i->drug->specification ?? '', 'quantity' => $i->quantity, 'dosage' => $i->dosage, 'instructions' => $i->instructions])->values(),
             'created_at' => $prescription->created_at,
         ]);
     }
 
-    // ───────────────────── 3. 确认取药 ─────────────────────
+    // ─── 患者端: 确认取药 ───
 
-    /**
-     * 确认取药（含库存扣减事务）
-     *
-     * POST /api/patient/prescriptions/{id}/confirm
-     * 功能：
-     *  1. 校验处方状态为 pending
-     *  2. 逐项检查库存是否充足
-     *  3. 在事务中扣减库存 + 记录变动日志 + 更新处方状态
-     */
     public function confirm(int $id, Request $request): JsonResponse
     {
-        $patientId = $request->user()->id;
-
-        $prescription = Prescription::with('items.drug')
-            ->where('patient_id', $patientId)
-            ->find($id);
-
-        if (! $prescription) {
-            throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND);
-        }
-
-        if ($prescription->status !== 'pending') {
-            throw new BusinessException(
-                $prescription->status === 'dispensed' ? '该处方已取药，请勿重复操作' : '当前处方状态不可取药',
-                ResponseCode::STATUS_NOT_ALLOWED
-            );
-        }
-
-        if ($prescription->items->isEmpty()) {
-            throw new BusinessException('处方无药品明细，无法取药', ResponseCode::BUSINESS_ERROR);
-        }
-
-        // 第一步：预检查库存（不在事务内）
+        $prescription = Prescription::with('items.drug')->where('patient_id', $request->user()->id)->find($id);
+        if (! $prescription) { throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND); }
+        if ($prescription->status !== 'pending') { throw new BusinessException($prescription->status === 'dispensed' ? '该处方已取药' : '当前状态不可取药', ResponseCode::STATUS_NOT_ALLOWED); }
         $insufficient = [];
-        foreach ($prescription->items as $item) {
-            $stock = DrugStock::where('drug_id', $item->drug_id)->first();
-            $currentQty = $stock ? $stock->quantity : 0;
-
-            if ($currentQty < $item->quantity) {
-                $insufficient[] = [
-                    'drug_name' => $item->drug->name ?? '未知药品',
-                    'need' => $item->quantity,
-                    'have' => $currentQty,
-                ];
-            }
-        }
-
-        if (! empty($insufficient)) {
-            $names = implode('、', array_column($insufficient, 'drug_name'));
-            return Result::error(
-                ResponseCode::STOCK_NOT_ENOUGH,
-                "以下药品库存不足：{$names}",
-                ['detail' => $insufficient]
-            );
-        }
-
-        // 第二步：事务内执行扣减
+        foreach ($prescription->items as $item) { $s = DrugStock::where('drug_id', $item->drug_id)->first(); if (($s ? $s->quantity : 0) < $item->quantity) { $insufficient[] = ['drug_name' => $item->drug->name ?? '', 'need' => $item->quantity, 'have' => $s ? $s->quantity : 0]; } }
+        if ($insufficient) { return Result::error(ResponseCode::STOCK_NOT_ENOUGH, '库存不足：' . implode('、', array_column($insufficient, 'drug_name')), ['detail' => $insufficient]); }
         DB::beginTransaction();
         try {
             foreach ($prescription->items as $item) {
                 $stock = DrugStock::where('drug_id', $item->drug_id)->lockForUpdate()->first();
-
-                if (! $stock || $stock->quantity < $item->quantity) {
-                    throw new \Exception("药品 [{$item->drug->name}] 库存在扣减时不足");
-                }
-
-                $before = $stock->quantity;
-                $stock->quantity -= $item->quantity;
-                $stock->save();
-
-                // 记录库存变动日志
-                DrugStockChange::create([
-                    'drug_id' => $item->drug_id,
-                    'type' => 'out',
-                    'quantity' => $item->quantity,
-                    'before_quantity' => $before,
-                    'after_quantity' => $stock->quantity,
-                    'reason' => '患者取药 - 处方#' . $prescription->id,
-                    'related_id' => $prescription->id,
-                    'related_type' => 'prescription',
-                ]);
+                if (! $stock || $stock->quantity < $item->quantity) { throw new \Exception("库存不足"); }
+                $b = $stock->quantity; $stock->quantity -= $item->quantity; $stock->save();
+                DrugStockChange::create(['drug_id' => $item->drug_id, 'type' => 'out', 'quantity' => $item->quantity, 'before_quantity' => $b, 'after_quantity' => $stock->quantity, 'reason' => '取药 - 处方#' . $prescription->id, 'related_id' => $prescription->id, 'related_type' => 'prescription']);
             }
-
-            // 更新处方状态
-            $prescription->status = 'dispensed';
-            $prescription->save();
-
+            $prescription->status = 'dispensed'; $prescription->save();
             DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw new BusinessException(
-                '取药失败：' . $e->getMessage(),
-                ResponseCode::BUSINESS_ERROR
-            );
-        }
-
-        return Result::success('取药成功，库存已自动扣减');
+        } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('取药失败', ResponseCode::BUSINESS_ERROR); }
+        return Result::success('取药成功');
     }
+
+    // ─── 患者端: 续方 ───
 
     public function refill(int $id, Request $request): JsonResponse
     {
-        $prescription = Prescription::with('items.drug')->where('patient_id', $request->user()->id)->find($id);
-        if (! $prescription) { throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND); }
-        if ($prescription->status !== 'dispensed') { throw new BusinessException('仅可续方已取药的处方', ResponseCode::STATUS_NOT_ALLOWED); }
-        return Result::success('续方申请已提交', [
-            'original_prescription_id' => $prescription->id,
-            'items' => $prescription->items->map(fn ($i) => ['drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'quantity' => $i->quantity]),
-    // ───────────────────── 4. 处方续方申请 ─────────────────────
-
-    /**
-     * 处方续方申请
-     *
-     * POST /api/patient/prescriptions/{id}/refill
-     * 功能：基于已完成的处方，申请医生开具续方。
-     * 约束：仅可续方已取药的处方
-     */
-    public function refill(int $id, Request $request): JsonResponse
-    {
-        $patientId = $request->user()->id;
-
-        $prescription = Prescription::with('items.drug')
-            ->where('patient_id', $patientId)
-            ->find($id);
-
-        if (! $prescription) {
-            throw new BusinessException('处方记录不存在', ResponseCode::DATA_NOT_FOUND);
-        }
-
-        if ($prescription->status !== 'dispensed') {
-            throw new BusinessException('仅可续方已取药的处方', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-
-        return Result::success('续方申请已提交', [
-            'original_prescription_id' => $prescription->id,
-            'items' => $prescription->items->map(fn ($i) => [
-                'drug_name' => $i->drug->name ?? '',
-                'dosage' => $i->dosage,
-                'quantity' => $i->quantity,
-            ]),
-            'message' => '续方申请已提交，请等待医生处理',
-        ]);
+        $p = Prescription::with('items.drug')->where('patient_id', $request->user()->id)->find($id);
+        if (! $p) { throw new BusinessException('处方不存在', ResponseCode::DATA_NOT_FOUND); }
+        if ($p->status !== 'dispensed') { throw new BusinessException('仅可续方已取药的处方', ResponseCode::STATUS_NOT_ALLOWED); }
+        return Result::success('续方申请已提交', ['original_prescription_id' => $p->id, 'items' => $p->items->map(fn ($i) => ['drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'quantity' => $i->quantity])]);
     }
 
+    // ─── 患者端: 用药提醒 ───
+
     public function medicationReminders(Request $request): JsonResponse
     {
-        $prescriptions = Prescription::with('items.drug', 'doctor:id,name')
-            ->where('patient_id', $request->user()->id)->where('status', 'pending')->get();
-        $reminders = [];
-        foreach ($prescriptions as $p) {
-            foreach ($p->items as $item) {
-                $reminders[] = ['prescription_id' => $p->id, 'drug_name' => $item->drug->name ?? '', 'dosage' => $item->dosage, 'instructions' => $item->instructions, 'doctor_name' => $p->doctor->name ?? '', 'created_at' => $p->created_at];
-            }
-        }
-        return Result::success('成功', ['reminders' => $reminders, 'total' => count($reminders)]);
-    // ───────────────────── 5. 每日用药提醒 ─────────────────────
+        $ps = Prescription::with('items.drug', 'doctor:id,name')->where('patient_id', $request->user()->id)->where('status', 'pending')->get();
+        $r = []; foreach ($ps as $p) { foreach ($p->items as $i) { $r[] = ['prescription_id' => $p->id, 'drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'instructions' => $i->instructions, 'doctor_name' => $p->doctor->name ?? '', 'created_at' => $p->created_at]; } }
+        return Result::success('成功', ['reminders' => $r, 'total' => count($r)]);
+    }
 
-    /**
-     * 每日用药提醒列表
-     *
-     * GET /api/patient/medication-reminders
-     * 功能：返回当前患者所有待取药处方的用药提醒。
-     */
-    public function medicationReminders(Request $request): JsonResponse
+    // ─── 医生端: 开具处方 ───
+
+    public function store(Request $request): JsonResponse
     {
-        $patientId = $request->user()->id;
-
-        $prescriptions = Prescription::with('items.drug', 'doctor:id,name')
-            ->where('patient_id', $patientId)
-            ->where('status', 'pending')
-            ->get();
-
-        $reminders = [];
-        foreach ($prescriptions as $p) {
-            foreach ($p->items as $item) {
-                $reminders[] = [
-                    'prescription_id' => $p->id,
-                    'drug_name' => $item->drug->name ?? '',
-                    'dosage' => $item->dosage,
-                    'instructions' => $item->instructions,
-                    'doctor_name' => $p->doctor->name ?? '',
-                    'created_at' => $p->created_at,
-                ];
-            }
-        }
-
-        return Result::success('成功', [
-            'reminders' => $reminders,
-            'total' => count($reminders),
+        $validated = $request->validate([
+            'appointment_id' => ['required', 'integer', 'exists:appointments,id'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.drug_id' => ['required', 'integer', 'exists:drugs,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.dosage' => ['required', 'string'],
+            'items.*.instructions' => ['nullable', 'string'],
         ]);
+        $doctorId = $request->user()->id;
+        $appointment = Appointment::where('doctor_id', $doctorId)->find($validated['appointment_id']);
+        if (! $appointment) { throw new BusinessException('预约不存在或无权限', ResponseCode::DATA_NOT_FOUND); }
+        $insufficient = [];
+        foreach ($validated['items'] as $item) { $s = DrugStock::where('drug_id', $item['drug_id'])->first(); if (($s ? $s->quantity : 0) < $item['quantity']) { $insufficient[] = ['drug_name' => Drug::find($item['drug_id'])->name ?? '', 'need' => $item['quantity'], 'have' => $s ? $s->quantity : 0]; } }
+        if ($insufficient) { return Result::error(ResponseCode::STOCK_NOT_ENOUGH, '库存不足：' . implode('、', array_column($insufficient, 'drug_name')), ['detail' => $insufficient]); }
+        DB::beginTransaction();
+        try {
+            $rx = Prescription::create(['appointment_id' => $appointment->id, 'patient_id' => $appointment->patient_id, 'doctor_id' => $doctorId, 'status' => 'pending']);
+            foreach ($validated['items'] as $item) { PrescriptionItem::create(['prescription_id' => $rx->id, 'drug_id' => $item['drug_id'], 'quantity' => $item['quantity'], 'dosage' => $item['dosage'], 'instructions' => $item['instructions'] ?? null]); }
+            DB::commit();
+        } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('处方创建失败', ResponseCode::BUSINESS_ERROR); }
+        $rx->load('items.drug:id,name,specification');
+        return Result::success('处方开具成功', $this->show($rx->id, $request)->getData(true)['data']);
     }
 }
