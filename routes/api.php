@@ -53,9 +53,9 @@ Route::prefix('patient')
         Route::get('/doctors/{id}', [PatientController::class, 'doctorDetail']);
         Route::post('/appointments', [PatientController::class, 'store']);
         Route::get('/appointments', [PatientController::class, 'index']);
+        Route::get('/appointments/available-slots', [PatientController::class, 'availableSlots']);
         Route::get('/appointments/{id}', [PatientController::class, 'show']);
         Route::delete('/appointments/{id}', [PatientController::class, 'cancel']);
-        Route::get('/appointments/available-slots', [PatientController::class, 'availableSlots']);
         Route::post('/appointments/{id}/review', [PatientController::class, 'review']);
 
         // AI 文字诊断
