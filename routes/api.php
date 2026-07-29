@@ -56,6 +56,19 @@ Route::prefix('patient')->middleware(['auth:sanctum', 'role:patient'])->group(fu
     Route::post('/ai-diagnosis/continue', [AIDiagnosisController::class, 'continue']);
     Route::get('/ai-diagnosis/{id}', [AIDiagnosisController::class, 'show']);
     Route::get('/ai-diagnosis/{id}/export', [AIDiagnosisController::class, 'exportPdf']);
+Route::prefix('patient')
+    ->middleware(['auth:sanctum', 'role:patient'])
+    ->group(function () {
+        // 预约管理
+        Route::get('/dashboard', [PatientController::class, 'dashboard']);
+        Route::get('/doctors', [PatientController::class, 'doctors']);
+        Route::get('/doctors/{id}', [PatientController::class, 'doctorDetail']);
+        Route::post('/appointments', [PatientController::class, 'store']);
+        Route::get('/appointments', [PatientController::class, 'index']);
+        Route::get('/appointments/available-slots', [PatientController::class, 'availableSlots']);
+        Route::get('/appointments/{id}', [PatientController::class, 'show']);
+        Route::delete('/appointments/{id}', [PatientController::class, 'cancel']);
+        Route::post('/appointments/{id}/review', [PatientController::class, 'review']);
 
     // 病历
     Route::get('/medical-records', [MedicalRecordController::class, 'index']);
