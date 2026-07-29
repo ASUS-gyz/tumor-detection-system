@@ -1,109 +1,67 @@
 <?php
 
-namespace App\Http\Controllers\Patient;
+namespace App\Http\Controllers\Api\ZZT;
 
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
 use App\Models\MedicalRecord;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/**
- * 患者端病历控制器
- *
- * 提供患者查看本人病历列表和详情的功能。
- * 所有接口需 patient 角色认证，仅可查看本人数据。
- */
 class MedicalRecordController extends Controller
 {
-    // ───────────────────── 1. 我的病历列表 ─────────────────────
-
-    /**
-     * 我的病历列表
-     *
-     * GET /api/patient/medical-records
-     * 功能：分页返回当前患者的病历，含医生姓名和预约日期。
-     * 参数：page, per_page（默认10，最大50）
-     */
     public function index(Request $request): JsonResponse
     {
-        $patientId = $request->user()->id;
-        $perPage = min((int) $request->input('per_page', 10), 50);
-
-        $records = MedicalRecord::with([
-                'doctor:id,name,title',
-                'appointment:id,appointment_date',
-            ])
-            ->where('patient_id', $patientId)
-            ->select([
-                'id', 'appointment_id', 'doctor_id',
-                'symptoms', 'preliminary_diagnosis', 'created_at',
-            ])
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
-
-        $list = $records->getCollection()->map(function ($r) {
-            return [
-                'id' => $r->id,
-                'symptoms' => mb_substr($r->symptoms, 0, 50),
-                'preliminary_diagnosis' => mb_substr($r->preliminary_diagnosis, 0, 50),
-                'doctor_name' => $r->doctor->name ?? '',
-                'appointment_date' => $r->appointment->appointment_date ?? null,
-                'created_at' => $r->created_at,
-            ];
-        });
-
-        return Result::success('成功', [
-            'list' => $list->values(),
-            'page' => $records->currentPage(),
-            'size' => $records->perPage(),
-            'total' => $records->total(),
-            'total_pages' => $records->lastPage(),
-        ]);
+        $u = $request->user(); $pp = min((int) $request->input('per_page', 10), 50);
+        if ($u->role === 'patient') {
+            $p = MedicalRecord::with('doctor:id,name,title', 'appointment:id,appointment_date')->where('patient_id', $u->id)->select('id', 'appointment_id', 'doctor_id', 'symptoms', 'preliminary_diagnosis', 'created_at')->orderByDesc('created_at')->paginate($pp);
+            $list = $p->getCollection()->map(fn($r) => ['id' => $r->id, 'symptoms' => mb_substr($r->symptoms, 0, 50), 'preliminary_diagnosis' => mb_substr($r->preliminary_diagnosis, 0, 50), 'doctor_name' => $r->doctor->name ?? '', 'appointment_date' => $r->appointment->appointment_date ?? null, 'created_at' => $r->created_at]);
+        } else {
+            $p = MedicalRecord::with('patient:id,name,phone', 'appointment:id,appointment_date')->where('doctor_id', $u->id)->select('id', 'appointment_id', 'patient_id', 'symptoms', 'preliminary_diagnosis', 'created_at')->orderByDesc('created_at')->paginate($pp);
+            $list = $p->getCollection()->map(fn($r) => ['id' => $r->id, 'patient_name' => $r->patient->name ?? '', 'patient_phone' => $r->patient->phone ?? '', 'symptoms' => mb_substr($r->symptoms, 0, 50), 'preliminary_diagnosis' => mb_substr($r->preliminary_diagnosis, 0, 50), 'appointment_date' => $r->appointment->appointment_date ?? null, 'created_at' => $r->created_at]);
+        }
+        return Result::success('成功', ['list' => $list->values(), 'page' => $p->currentPage(), 'size' => $p->perPage(), 'total' => $p->total(), 'total_pages' => $p->lastPage()]);
     }
 
-    // ───────────────────── 2. 病历详情 ─────────────────────
-
-    /**
-     * 病历详情
-     *
-     * GET /api/patient/medical-records/{id}
-     * 功能：返回指定病历的完整信息，含医生信息和预约时间。
-     */
     public function show(int $id, Request $request): JsonResponse
     {
-        $patientId = $request->user()->id;
+        $u = $request->user();
+        $q = MedicalRecord::with('patient:id,name,phone', 'doctor:id,name,title,specialty', 'appointment:id,appointment_date,appointment_time');
+        $r = ($u->role === 'patient' ? $q->where('patient_id', $u->id) : $q->where('doctor_id', $u->id))->find($id);
+        if (! $r) throw new BusinessException('病历记录不存在', ResponseCode::DATA_NOT_FOUND);
+        return Result::success('成功', ['id' => $r->id, 'symptoms' => $r->symptoms, 'imaging_findings' => $r->imaging_findings, 'preliminary_diagnosis' => $r->preliminary_diagnosis, 'treatment_plan' => $r->treatment_plan, 'doctor' => ['id' => $r->doctor->id ?? null, 'name' => $r->doctor->name ?? '', 'title' => $r->doctor->title ?? '', 'specialty' => $r->doctor->specialty ?? ''], 'patient' => ['id' => $r->patient->id ?? null, 'name' => $r->patient->name ?? '', 'phone' => $r->patient->phone ?? ''], 'appointment' => ['id' => $r->appointment->id ?? null, 'date' => $r->appointment->appointment_date ?? null, 'time' => $r->appointment->appointment_time ?? null], 'created_at' => $r->created_at, 'updated_at' => $r->updated_at]);
+    }
 
-        $record = MedicalRecord::with([
-                'doctor:id,name,title,specialty',
-                'appointment:id,appointment_date,appointment_time',
-            ])
-            ->where('patient_id', $patientId)
-            ->find($id);
+    public function store(Request $request): JsonResponse
+    {
+        $v = $request->validate(['appointment_id' => 'required|integer|exists:appointments,id', 'symptoms' => 'required|string|min:2', 'imaging_findings' => 'nullable|string', 'preliminary_diagnosis' => 'required|string|min:2', 'treatment_plan' => 'required|string|min:2']);
+        $did = $request->user()->id;
+        $a = Appointment::where('doctor_id', $did)->find($v['appointment_id']);
+        if (! $a) throw new BusinessException('预约不存在或无权限', ResponseCode::DATA_NOT_FOUND);
+        if (MedicalRecord::where('appointment_id', $a->id)->exists()) throw new BusinessException('该预约已创建病历', ResponseCode::DUPLICATE_SUBMIT);
+        MedicalRecord::create(['appointment_id' => $a->id, 'patient_id' => $a->patient_id, 'doctor_id' => $did, 'symptoms' => $v['symptoms'], 'imaging_findings' => $v['imaging_findings'] ?? null, 'preliminary_diagnosis' => $v['preliminary_diagnosis'], 'treatment_plan' => $v['treatment_plan']]);
+        return Result::success('病历创建成功');
+    }
 
-        if (! $record) {
-            throw new BusinessException('病历记录不存在', ResponseCode::DATA_NOT_FOUND);
-        }
+    public function update(int $id, Request $request): JsonResponse
+    {
+        $r = MedicalRecord::where('doctor_id', $request->user()->id)->find($id);
+        if (! $r) throw new BusinessException('病历不存在或无权限', ResponseCode::DATA_NOT_FOUND);
+        $d = array_filter($request->only(['symptoms', 'imaging_findings', 'preliminary_diagnosis', 'treatment_plan']), fn($v) => $v !== null);
+        if (empty($d)) throw new BusinessException('至少提供一个更新字段', ResponseCode::PARAM_ERROR);
+        $r->fill($d)->save();
+        return Result::success('病历更新成功');
+    }
 
-        return Result::success('成功', [
-            'id' => $record->id,
-            'symptoms' => $record->symptoms,
-            'imaging_findings' => $record->imaging_findings,
-            'preliminary_diagnosis' => $record->preliminary_diagnosis,
-            'treatment_plan' => $record->treatment_plan,
-            'doctor' => [
-                'id' => $record->doctor->id ?? null,
-                'name' => $record->doctor->name ?? '',
-                'title' => $record->doctor->title ?? '',
-                'specialty' => $record->doctor->specialty ?? '',
-            ],
-            'appointment' => [
-                'date' => $record->appointment->appointment_date ?? null,
-                'time' => $record->appointment->appointment_time ?? null,
-            ],
-            'created_at' => $record->created_at,
-        ]);
+    public function compare(Request $request): JsonResponse
+    {
+        $request->validate(['ids' => 'required|string|regex:/^\d+(,\d+)*$/'], ['ids.required' => '请选择要对比的病历ID']);
+        $ids = array_slice(array_unique(explode(',', $request->input('ids'))), 0, 5);
+        $rs = MedicalRecord::with('patient:id,name', 'appointment:id,appointment_date')->where('doctor_id', $request->user()->id)->whereIn('id', $ids)->get();
+        if ($rs->isEmpty()) throw new BusinessException('未找到病历', ResponseCode::DATA_NOT_FOUND);
+        return Result::success('成功', ['records' => $rs->map(fn($r) => ['id' => $r->id, 'patient_name' => $r->patient->name ?? '', 'appointment_date' => $r->appointment->appointment_date ?? null, 'symptoms' => $r->symptoms, 'imaging_findings' => $r->imaging_findings, 'preliminary_diagnosis' => $r->preliminary_diagnosis, 'treatment_plan' => $r->treatment_plan, 'created_at' => $r->created_at])->values(), 'count' => $rs->count()]);
     }
 }

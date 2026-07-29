@@ -14,6 +14,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // 纯 API 项目，未认证用户不跳转登录页，直接抛异常走 JSON 返回
+        $middleware->redirectGuestsTo(fn() => throw new \Illuminate\Auth\AuthenticationException());
+
         // 全局中间件 — TraceId 链路追踪
         $middleware->append(\App\Http\Middleware\TraceIdMiddleware::class);
 
