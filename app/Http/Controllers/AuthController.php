@@ -15,7 +15,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -129,123 +128,37 @@ class AuthController extends Controller
             'email.exists' => '该邮箱未注册',
         ]);
         $user = User::where('email', $request->input('email'))->first();
-        $token = Str::random(60);
+
+        // 生成 6 位数字验证码，60 分钟有效
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
         DB::table('password_reset_tokens')->updateOrInsert(
             ['email' => $user->email],
-            ['token' => $token, 'created_at' => now()]
+            ['token' => $code, 'created_at' => now()]
         );
-<<<<<<< Updated upstream
 
-        return Result::success('重置链接已发送至您的邮箱', [
-            'message' => '请检查邮箱中的重置链接（开发模式：token 直接返回）',
-            'reset_token' => $token,
-        ]);
+        // 发送邮件
+        \Illuminate\Support\Facades\Mail::raw(
+            "您的密码重置验证码为：{$code}\n\n"
+            . "请在 60 分钟内使用此验证码完成密码重置。\n"
+            . "如非本人操作，请忽略此邮件。",
+            function ($message) use ($user) {
+                $message->to($user->email)
+                    ->subject('密码重置验证码 - 肿瘤科智能检测门诊系统');
+            }
+        );
+
+        // 开发阶段：把验证码输出到日志，方便调试
+        \Illuminate\Support\Facades\Log::info('密码重置验证码', ['email' => $user->email, 'code' => $code]);
+
+        return Result::success('验证码已发送至您的邮箱，请查收');
     }
 
-    // ───────────────────── 9. 重置密码 ─────────────────────
-
-    /**
-     * 重置密码
-     *
-     * POST /api/auth/reset-password
-     * 功能：使用令牌重置密码。
-     * 参数：email, token, password, password_confirmation
-     */
-=======
-        return Result::success('重置链接已发送', ['reset_token' => $token]);
-    }
-
->>>>>>> Stashed changes
     public function resetPassword(Request $request): JsonResponse
     {
         $request->validate([
             'email' => ['required', 'string', 'email', 'exists:users,email'],
             'token' => ['required', 'string'],
-<<<<<<< Updated upstream
-            'password' => ['required', 'string', 'min:6', 'max:100', 'confirmed'],
-        ], [
-            'email.required' => '请输入邮箱地址',
-            'token.required' => '令牌不能为空',
-            'password.required' => '请输入新密码',
-            'password.min' => '密码长度不能少于6位',
-            'password.confirmed' => '两次输入的密码不一致',
-        ]);
-
-        // 验证令牌
-        $record = \Illuminate\Support\Facades\DB::table('password_reset_tokens')
-            ->where('email', $request->input('email'))
-            ->first();
-
-        if (! $record || $record->token !== $request->input('token')) {
-            throw new BusinessException('重置令牌无效或已过期', ResponseCode::PARAM_ILLEGAL);
-        }
-
-        // 更新密码
-        $user = User::where('email', $request->input('email'))->first();
-        $user->password = $request->input('password');
-        $user->save();
-
-        // 删除已使用的令牌
-        \Illuminate\Support\Facades\DB::table('password_reset_tokens')
-            ->where('email', $request->input('email'))
-            ->delete();
-
-        return Result::success('密码重置成功');
-    }
-
-    // ───────────────────── 10. 邮箱验证 ─────────────────────
-
-    /**
-     * 邮箱验证
-     *
-     * POST /api/auth/verify-email
-     * 功能：标记当前用户邮箱为已验证。
-     */
-    public function verifyEmail(Request $request): JsonResponse
-    {
-        $user = $request->user();
-
-        if ($user->email_verified_at) {
-            return Result::success('邮箱已验证');
-        }
-
-        $user->email_verified_at = now();
-        $user->save();
-
-        return Result::success('邮箱验证成功');
-    }
-
-    // ───────────────────── 11. 账号注销 ─────────────────────
-
-    /**
-     * 账号注销
-     *
-     * DELETE /api/auth/account
-     * 功能：注销当前登录用户的账号（软标记为 disabled）。
-     * 参数：password（确认身份）
-     */
-    public function deleteAccount(Request $request): JsonResponse
-    {
-        $request->validate([
-            'password' => ['required', 'string'],
-        ], [
-            'password.required' => '请输入密码以确认注销',
-        ]);
-
-        $user = $request->user();
-
-        if (! \Illuminate\Support\Facades\Hash::check($request->input('password'), $user->password)) {
-            throw new BusinessException('密码不正确', ResponseCode::PASSWORD_ERROR);
-        }
-
-        // 删除所有 token
-        $user->tokens()->delete();
-
-        // 标记账号为已禁用（软删除）
-        $user->status = 'disabled';
-        $user->save();
-
-=======
             'password' => [
                 'required', 'string', 'min:8', 'max:100', 'confirmed',
                 function (string $attribute, mixed $value, \Closure $fail): void {
@@ -257,27 +170,29 @@ class AuthController extends Controller
                     if ($types < 3) { $fail('密码必须包含大写字母、小写字母、数字、特殊符号中至少3种类型'); }
                 },
             ],
+        ], [
+            'email.required' => '请输入邮箱',
+            'email.email' => '邮箱格式不正确',
+            'email.exists' => '该邮箱未注册',
+            'token.required' => '令牌不能为空',
+            'password.required' => '请输入新密码',
+            'password.min' => '密码长度不能少于8位',
+            'password.confirmed' => '两次输入的密码不一致',
         ]);
         $record = DB::table('password_reset_tokens')->where('email', $request->input('email'))->first();
         if (! $record || $record->token !== $request->input('token')) {
-            throw new BusinessException('重置令牌无效或已过期', ResponseCode::PARAM_ILLEGAL);
+            throw new BusinessException('重置令牌无效', ResponseCode::PARAM_ILLEGAL);
+        }
+        // 60 分钟过期
+        if (now()->diffInMinutes($record->created_at) > 60) {
+            DB::table('password_reset_tokens')->where('email', $request->input('email'))->delete();
+            throw new BusinessException('重置令牌已过期，请重新获取', ResponseCode::PARAM_ILLEGAL);
         }
         $user = User::where('email', $request->input('email'))->first();
         $user->password = $request->input('password');
         $user->save();
         DB::table('password_reset_tokens')->where('email', $request->input('email'))->delete();
         return Result::success('密码重置成功');
-    }
-
-    public function verifyEmail(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        if ($user->email_verified_at) {
-            return Result::success('邮箱已验证');
-        }
-        $user->email_verified_at = now();
-        $user->save();
-        return Result::success('邮箱验证成功');
     }
 
     public function deleteAccount(Request $request): JsonResponse
@@ -290,7 +205,6 @@ class AuthController extends Controller
         $user->tokens()->delete();
         $user->status = 'disabled';
         $user->save();
->>>>>>> Stashed changes
         return Result::success('账号已注销');
     }
 

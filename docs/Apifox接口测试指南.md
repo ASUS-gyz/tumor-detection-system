@@ -1,9 +1,9 @@
 # Apifox 接口测试指南
 
-> **测试范围**：ZZT 负责的 44 个接口（5 模块）
+> **测试范围**：ZZT 负责的 43 个接口（5 模块）
 > **测试顺序**：按接口间的数据依赖关系编排
 
----
+***
 
 ## 一、环境准备
 
@@ -16,23 +16,42 @@ php artisan serve --port=8000
 
 服务地址：`http://127.0.0.1:8000`
 
-### 1.2 导入接口到 Apifox
+### 1.2 配置邮件服务（忘记密码重置功能依赖）
+
+编辑 `.env` 文件，填入 QQ 邮箱 SMTP 信息：
+
+```env
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtps
+MAIL_HOST=smtp.qq.com
+MAIL_PORT=465
+MAIL_USERNAME=你的QQ邮箱@qq.com
+MAIL_PASSWORD=你的QQ邮箱16位授权码
+MAIL_FROM_ADDRESS=你的QQ邮箱@qq.com
+MAIL_FROM_NAME="肿瘤科智能检测门诊系统"
+```
+
+> QQ 邮箱授权码获取：网页登录 QQ 邮箱 → 设置 → 账户 → 开启 SMTP 服务 → 发短信验证 → 得到 16 位授权码。
+>
+> 不配邮件也能测试——开发模式下 `forgot-password` 会额外返回 `debug_token`。
+
+### 1.3 导入接口到 Apifox
 
 1. 打开 Apifox → 点击 **+** → **导入数据**
 2. 选择 **文件导入** → 选择 `public/openapi.json`
 3. 导入后，左侧会出现 5 个模块分组
 
-### 1.3 配置环境变量
+### 1.4 配置环境变量
 
 在 Apifox 中创建环境：
 
-| 变量名 | 值 |
-|--------|-----|
-| `base_url` | `http://127.0.0.1:8000/api` |
-| `patient_token` | 先留空，测试时动态填入 |
-| `doctor_token` | 先留空，测试时动态填入 |
+| 变量名             | 值                           |
+| --------------- | --------------------------- |
+| `base_url`      | `http://127.0.0.1:8000/api` |
+| `patient_token` | 先留空，测试时动态填入                 |
+| `doctor_token`  | 先留空，测试时动态填入                 |
 
-### 1.4 准备测试数据
+### 1.5 准备测试数据
 
 数据库需要预先准备 test doctor。在终端执行：
 
@@ -57,7 +76,7 @@ echo 'drug1_id=' . $d->id . ' drug2_id=' . $d2->id;
 exit
 ```
 
----
+***
 
 ## 二、测试顺序（依赖链）
 
@@ -69,9 +88,9 @@ exit
 ⑥ 医生端：创建病历 → 编辑病历 → 开具处方 → 病历对比 → 模板管理
 ```
 
----
+***
 
-## 三、模块一：认证模块（11接口）
+## 三、模块一：认证模块（10接口）
 
 ### 3.1 注册患者
 
@@ -83,6 +102,7 @@ Authorization: 无
 **密码规则**（新增）：最少 8 位，必须包含大写字母、小写字母、数字、特殊符号中至少 3 种。
 
 **请求体**：
+
 ```json
 {
   "name": "测试患者",
@@ -95,6 +115,7 @@ Authorization: 无
 **预期响应**：`code: 0`，返回 `user` 对象和 `token` 字符串。
 
 **Apifox 后置脚本**（自动提取 token）：
+
 ```javascript
 const res = JSON.parse(pm.response.text());
 if (res.code === 0) {
@@ -170,8 +191,8 @@ Authorization: Bearer {{patient_token}}
 Content-Type: multipart/form-data
 ```
 
-| 参数 | 类型 | 值 |
-|------|------|-----|
+| 参数     | 类型   | 值                  |
+| ------ | ---- | ------------------ |
 | avatar | File | 选一张本地 .png/.jpg 图片 |
 
 **预期**：`code: 0`，返回 `avatar_url`。
@@ -189,7 +210,16 @@ Authorization: 无
 }
 ```
 
-**预期**：`code: 0`，返回 `reset_token` 字符串。
+**业务逻辑**：
+
+```
+输入邮箱 → 生成6位数字验证码(60分钟有效) → 发送邮件 → 返回"验证码已发送"
+```
+
+**预期**：`code: 0`，`msg: "验证码已发送至您的邮箱，请查收"`。
+
+> ⚠️ 验证码只发到邮箱，API 响应中不包含验证码。
+> Apifox 测试时查看验证码：另开终端执行 `tail -f storage/logs/laravel.log`，发送请求后日志会输出 `密码重置验证码`。
 
 ### 3.8 重置密码
 
@@ -201,26 +231,32 @@ Authorization: 无
 ```json
 {
   "email": "patient_test@apifox.com",
-  "token": "上一步拿到的 reset_token",
+  "token": "邮箱收到的6位数字验证码",
   "password": "ResetPwd@789",
   "password_confirmation": "ResetPwd@789"
 }
 ```
 
+**校验规则**：
+
+1. 验证码必须与邮箱收到的或日志中的一致
+2. 验证码自创建起 **60 分钟内有效**，过期需重新获取
+
 **预期**：`code: 0`，`msg: "密码重置成功"`。
 
-> 重置后的密码同样需要满足 3/4 复杂度规则。
+**异常情况**：
 
-### 3.9 邮箱验证
+| 场景        | code  | msg            |
+| --------- | ----- | -------------- |
+| 邮箱未注册     | 10001 | 该邮箱未注册         |
+| 验证码无效     | 10005 | 重置令牌无效         |
+| 验证码超过60分钟 | 10005 | 重置令牌已过期，请重新获取  |
+| 密码不符合复杂度  | 10001 | 密码必须包含3种以上字符类型 |
+| 两次密码不一致   | 10001 | 两次输入的密码不一致     |
 
-```
-POST {{base_url}}/auth/verify-email
-Authorization: Bearer {{patient_token}}
-```
+> 重置后的密码同样需要满足 3/4 复杂度规则。验证码使用后立即删除，不能重复使用。
 
-**预期**：`code: 0`。
-
-### 3.10 退出登录
+### 3.9 退出登录
 
 ```
 POST {{base_url}}/auth/logout
@@ -231,7 +267,7 @@ Authorization: Bearer {{patient_token}}
 
 > 退出后立即调用 `GET /auth/me` → 应返回 `code: 20001`（未登录）。
 
-### 3.11 账号注销
+### 3.10 账号注销
 
 ```
 DELETE {{base_url}}/auth/account
@@ -250,7 +286,7 @@ Authorization: Bearer {{patient_token}}
 >
 > 手动恢复：`php artisan tinker` → `User::where('email','patient_test@apifox.com')->update(['status'=>'active'])`
 
----
+***
 
 ## 四、模块二：患者端-预约管理（9接口）
 
@@ -264,6 +300,7 @@ Authorization: Bearer {{patient_token}}
 ```
 
 **预期**：
+
 ```json
 {
   "code": 0,
@@ -292,7 +329,7 @@ GET {{base_url}}/patient/doctors/2
 Authorization: Bearer {{patient_token}}
 ```
 
-> `2` 替换为实际 doctor_id。
+> `2` 替换为实际 doctor\_id。
 
 **预期**：返回医生完整信息（含 phone）。
 
@@ -323,6 +360,7 @@ Authorization: Bearer {{patient_token}}
 ```
 
 **预期**：
+
 ```json
 {
   "code": 0,
@@ -350,7 +388,7 @@ GET {{base_url}}/patient/appointments/1
 Authorization: Bearer {{patient_token}}
 ```
 
-> `1` 替换为实际 appointment_id。
+> `1` 替换为实际 appointment\_id。
 
 **预期**：返回预约 + 医生 + 病历(null) + 处方(null) + AI诊断(null)。
 
@@ -381,7 +419,7 @@ Authorization: Bearer {{patient_token}}
 
 **预期**：仅 `completed` 状态可评价。如预约不是此状态会返回 `40002`。
 
----
+***
 
 ## 五、模块三：患者端-AI文字诊断（5接口）
 
@@ -398,9 +436,9 @@ Authorization: Bearer {{patient_token}}
 }
 ```
 
-**预期**：`code: 0`，返回完整诊断报告（analysis / risk_level / risk_warning / advice / possible_conditions）。
+**预期**：`code: 0`，返回完整诊断报告（analysis / risk\_level / risk\_warning / advice / possible\_conditions）。
 
-> 记下返回的 `id`（diagnosis_id），后续步骤要用。
+> 记下返回的 `id`（diagnosis\_id），后续步骤要用。
 
 ### 5.2 AI诊断记录列表
 
@@ -418,7 +456,7 @@ GET {{base_url}}/patient/ai-diagnosis/1
 Authorization: Bearer {{patient_token}}
 ```
 
-> `1` 替换为实际 diagnosis_id。
+> `1` 替换为实际 diagnosis\_id。
 
 **预期**：完整诊断信息，含 `possible_conditions` JSON 数组。
 
@@ -445,9 +483,9 @@ GET {{base_url}}/patient/ai-diagnosis/1/export
 Authorization: Bearer {{patient_token}}
 ```
 
-**预期**：返回报告结构化数据（title / report_no / risk_level / analysis / disclaimer）。
+**预期**：返回报告结构化数据（title / report\_no / risk\_level / analysis / disclaimer）。
 
----
+***
 
 ## 六、模块四：患者端-病历与处方（7接口）
 
@@ -487,7 +525,7 @@ GET {{base_url}}/patient/prescriptions/1
 Authorization: Bearer {{patient_token}}
 ```
 
-**预期**：处方 + 药品明细（drug_name / specification / quantity / dosage / instructions）。
+**预期**：处方 + 药品明细（drug\_name / specification / quantity / dosage / instructions）。
 
 ### 6.5 确认取药 ⭐核心事务
 
@@ -522,11 +560,11 @@ Authorization: Bearer {{patient_token}}
 
 **预期**：返回 `pending` 状态的处方药品列表。
 
----
+***
 
 ## 七、模块五：医生端-病历与处方（12接口）
 
-> 前置条件：需要 doctor_token。
+> 前置条件：需要 doctor\_token。
 
 ### 7.0 登录医生获取 token
 
@@ -543,6 +581,7 @@ Authorization: 无
 ```
 
 **Apifox 后置脚本**：
+
 ```javascript
 const res = JSON.parse(pm.response.text());
 if (res.code === 0) {
@@ -553,6 +592,7 @@ if (res.code === 0) {
 > 预先创建一个患者预约（用 `patient_token` 调 4.4）。
 >
 > 然后在 tinker 中将预约状态改为接诊中：
+>
 > ```php
 > Appointment::where('patient_id', 患者ID)->update(['status'=>'in_progress'])
 > ```
@@ -721,31 +761,31 @@ GET {{base_url}}/doctor/prescription-templates
 Authorization: Bearer {{doctor_token}}
 ```
 
----
+***
 
 ## 八、异常场景测试清单
 
-| # | 测试场景 | 接口 | 预期 code |
-|---|----------|------|-----------|
-| 1 | 未登录访问需认证接口 | 任意 protect 接口 | 20001 |
-| 2 | 患者访问医生接口 | GET /doctor/medical-records | 20005 |
-| 3 | 登录禁用账号 | POST /auth/login | 20006 |
-| 4 | 登录错误密码 | POST /auth/login | 20008 |
-| 5 | 注册已存在邮箱 | POST /auth/register | 30003 |
-| 6 | 创建第二个进行中预约 | POST /patient/appointments | 40009 |
-| 7 | 取消非pending预约 | DELETE /patient/appointments/{id} | 40002 |
-| 8 | 取药库存不足 | POST /patient/prescriptions/{id}/confirm | 40004 |
-| 9 | 重复确认取药 | POST /patient/prescriptions/{id}/confirm | 40002 |
-| 10 | 查看他人病历 | GET /patient/medical-records/{id} | 30001 |
-| 11 | 上传非图片头像 | POST /auth/avatar | 10001 |
-| 12 | 预约过去日期 | POST /patient/appointments | 10001 |
-| 13 | 无效预约时段 | POST /patient/appointments | 10001 |
-| 14 | 重复创建同一预约的病历 | POST /doctor/medical-records | 40009 |
-| 15 | 空症状描述AI诊断 | POST /patient/ai-diagnosis | 10001 |
-| 16 | 密码少于8位 | POST /auth/register | 10001 |
-| 17 | 密码复杂度不足（仅2种类型） | POST /auth/register | 10001 |
+| #  | 测试场景           | 接口                                       | 预期 code |
+| -- | -------------- | ---------------------------------------- | ------- |
+| 1  | 未登录访问需认证接口     | 任意 protect 接口                            | 20001   |
+| 2  | 患者访问医生接口       | GET /doctor/medical-records              | 20005   |
+| 3  | 登录禁用账号         | POST /auth/login                         | 20006   |
+| 4  | 登录错误密码         | POST /auth/login                         | 20008   |
+| 5  | 注册已存在邮箱        | POST /auth/register                      | 30003   |
+| 6  | 创建第二个进行中预约     | POST /patient/appointments               | 40009   |
+| 7  | 取消非pending预约   | DELETE /patient/appointments/{id}        | 40002   |
+| 8  | 取药库存不足         | POST /patient/prescriptions/{id}/confirm | 40004   |
+| 9  | 重复确认取药         | POST /patient/prescriptions/{id}/confirm | 40002   |
+| 10 | 查看他人病历         | GET /patient/medical-records/{id}        | 30001   |
+| 11 | 上传非图片头像        | POST /auth/avatar                        | 10001   |
+| 12 | 预约过去日期         | POST /patient/appointments               | 10001   |
+| 13 | 无效预约时段         | POST /patient/appointments               | 10001   |
+| 14 | 重复创建同一预约的病历    | POST /doctor/medical-records             | 40009   |
+| 15 | 空症状描述AI诊断      | POST /patient/ai-diagnosis               | 10001   |
+| 16 | 密码少于8位         | POST /auth/register                      | 10001   |
+| 17 | 密码复杂度不足（仅2种类型） | POST /auth/register                      | 10001   |
 
----
+***
 
 ## 九、测试数据清理
 
@@ -766,6 +806,7 @@ User::where('email', 'patient_test@apifox.com')->delete();
 User::where('email', 'doctor@test.com')->delete();
 ```
 
----
+***
 
 > **文档版本**：V1.0 | **日期**：2026-07-29
+

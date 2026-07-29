@@ -39,8 +39,6 @@ class User extends Authenticatable
         ];
     }
 
-<<<<<<< Updated upstream
-=======
     // ─── 角色判断 ───────────────────────────────────────────
 
     public function isAdmin(): bool
@@ -58,7 +56,6 @@ class User extends Authenticatable
         return $this->role === 'patient';
     }
 
->>>>>>> Stashed changes
     // ─── 关联关系 ───────────────────────────────────────────
 
     /** 作为患者的预约 */
