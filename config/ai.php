@@ -20,14 +20,14 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | AI API 配置（远程模式）
+    | 千问 VL 图文诊断配置（DashScope）
     |--------------------------------------------------------------------------
     */
-    'api' => [
-        'url' => env('AI_API_URL', ''),
-        'key' => env('AI_API_KEY', ''),
-        'model' => env('AI_MODEL', ''),
-        'timeout' => env('AI_TIMEOUT', 60),
+    'qwen' => [
+        'url'     => env('QWEN_API_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'),
+        'key'     => env('QWEN_API_KEY', ''),
+        'model'   => env('QWEN_MODEL', 'qwen3-vl-plus'),
+        'timeout' => env('QWEN_TIMEOUT', 60),
     ],
 
     /*

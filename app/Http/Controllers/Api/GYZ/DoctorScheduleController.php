@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\GYZ;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\GYZ\DoctorScheduleRequest;
 use App\Http\Services\GYZ\DoctorScheduleService;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class DoctorScheduleController extends Controller
 {
@@ -23,11 +23,11 @@ class DoctorScheduleController extends Controller
     /**
      * 设置某天排班
      */
-    public function update(Request $request): JsonResponse
+    public function update(DoctorScheduleRequest $request): JsonResponse
     {
         return Result::success(msg: '排班已更新', data: $this->service->set(
             auth()->id(),
-            $request->integer('day_of_week', 0),
+            $request->integer('day_of_week'),
             $request->only(['is_available', 'time_slots', 'max_patients'])
         ));
     }

@@ -66,6 +66,18 @@ class PrescriptionController extends Controller
         DB::beginTransaction();
         try { $rx = Prescription::create(['appointment_id' => $a->id, 'patient_id' => $a->patient_id, 'doctor_id' => $did, 'status' => 'pending']); foreach ($v['items'] as $i) PrescriptionItem::create(['prescription_id' => $rx->id, 'drug_id' => $i['drug_id'], 'quantity' => $i['quantity'], 'dosage' => $i['dosage'], 'instructions' => $i['instructions'] ?? null]); DB::commit(); } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('处方创建失败', ResponseCode::BUSINESS_ERROR); }
         $rx->load('items.drug:id,name,specification');
-        return Result::success('处方开具成功');
+        return Result::success('处方开具成功', [
+            'id' => $rx->id,
+            'status' => $rx->status,
+            'patient_name' => $a->patient->name ?? '',
+            'items' => $rx->items->map(fn($i) => [
+                'drug_name' => $i->drug->name ?? '',
+                'specification' => $i->drug->specification ?? '',
+                'quantity' => $i->quantity,
+                'dosage' => $i->dosage,
+                'instructions' => $i->instructions,
+            ])->values(),
+            'created_at' => $rx->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+        ]);
     }
 }

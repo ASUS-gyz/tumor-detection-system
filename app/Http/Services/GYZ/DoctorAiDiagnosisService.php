@@ -26,8 +26,21 @@ class DoctorAiDiagnosisService
         $path = $image->store('ai-images', 'public');
         $imageUrl = Storage::url($path);
 
-        // Mock 延迟
-        sleep((int) config('ai.mock.image_diagnosis_delay', 2));
+        // remote 模式：调用千问 VL
+        if (config('ai.mode') === 'remote') {
+            $qwen = app(QwenVisionService::class);
+            $result = $qwen->analyze($image, $description);
+        } else {
+            // mock 模式
+            sleep((int) config('ai.mock.image_diagnosis_delay', 2));
+            $result = [
+                'imaging_features'          => 'CT影像显示：右肺上叶后段见约2.5cm×1.8cm结节影，边界欠清，呈分叶状，密度不均匀，可见毛刺征及胸膜凹陷征。邻近胸膜轻度增厚。增强扫描示结节呈不均匀强化。',
+                'risk_assessment'           => '高风险',
+                'suspected_lesions'         => '结合影像学特征（分叶、毛刺、胸膜凹陷、不均匀强化），右肺上叶周围型肺癌可能性大（T1cN0M0？），建议结合病理学检查明确诊断。',
+                'treatment_recommendations' => "1. 建议立即行CT引导下经皮肺穿刺活检明确病理；2. 完善PET-CT进行全身评估排除远处转移；3. 查肿瘤标志物全套（CEA、CYFRA21-1、NSE、SCC）；4. 肺功能检查评估手术耐受性；5. 请胸外科及放疗科多学科会诊。",
+                'confidence'                => '92%',
+            ];
+        }
 
         $diag = AiDiagnosis::create([
             'type' => 'image',
@@ -35,11 +48,11 @@ class DoctorAiDiagnosisService
             'doctor_id' => $doctorId,
             'appointment_id' => $appointmentId,
             'description' => $description,
-            'imaging_features' => 'CT影像显示：右肺上叶后段见约2.5cm×1.8cm结节影，边界欠清，呈分叶状，密度不均匀，可见毛刺征及胸膜凹陷征。邻近胸膜轻度增厚。增强扫描示结节呈不均匀强化。',
-            'risk_assessment' => '高风险',
-            'suspected_lesions' => '结合影像学特征（分叶、毛刺、胸膜凹陷、不均匀强化），右肺上叶周围型肺癌可能性大（T1cN0M0？），建议结合病理学检查明确诊断。',
-            'treatment_recommendations' => "1. 建议立即行CT引导下经皮肺穿刺活检明确病理；2. 完善PET-CT进行全身评估排除远处转移；3. 查肿瘤标志物全套（CEA、CYFRA21-1、NSE、SCC）；4. 肺功能检查评估手术耐受性；5. 请胸外科及放疗科多学科会诊。",
-            'confidence' => '92%',
+            'imaging_features' => $result['imaging_features'],
+            'risk_assessment' => $result['risk_assessment'],
+            'suspected_lesions' => $result['suspected_lesions'],
+            'treatment_recommendations' => $result['treatment_recommendations'],
+            'confidence' => $result['confidence'],
             'image_url' => $imageUrl,
         ]);
 
@@ -61,16 +74,17 @@ class DoctorAiDiagnosisService
             'treatment_recommendations' => $diag->treatment_recommendations,
             'confidence' => $diag->confidence,
             'image_url' => $diag->image_url,
-            'created_at' => $diag->created_at->toIso8601String(),
+            'created_at' => $diag->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
     }
 
     /**
      * AI 图文诊断记录列表
      */
-    public function list(array $filters): LengthAwarePaginator
+    public function list(int $doctorId, array $filters): LengthAwarePaginator
     {
         $query = AiDiagnosis::with('patient:id,name')
+            ->where('doctor_id', $doctorId)
             ->where('type', 'image')
             ->select(['id', 'type', 'patient_id', 'risk_assessment', 'confidence', 'created_at']);
 
@@ -92,16 +106,16 @@ class DoctorAiDiagnosisService
                 'type' => $d->type,
                 'risk_assessment' => $d->risk_assessment,
                 'confidence' => $d->confidence,
-                'created_at' => $d->created_at->toIso8601String(),
+                'created_at' => $d->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 
     /**
      * AI 图文诊断报告详情
      */
-    public function detail(int $id): array
+    public function detail(int $doctorId, int $id): array
     {
-        $diag = AiDiagnosis::with('patient:id,name')->where('type', 'image')->find($id);
+        $diag = AiDiagnosis::with('patient:id,name')->where('doctor_id', $doctorId)->where('type', 'image')->find($id);
         if (! $diag) {
             throw new BusinessException('报告不存在', ResponseCode::DATA_NOT_FOUND);
         }
@@ -119,7 +133,7 @@ class DoctorAiDiagnosisService
             'treatment_recommendations' => $diag->treatment_recommendations,
             'confidence' => $diag->confidence,
             'image_url' => $diag->image_url,
-            'created_at' => $diag->created_at->toIso8601String(),
+            'created_at' => $diag->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
     }
 }

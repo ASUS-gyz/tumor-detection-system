@@ -32,7 +32,7 @@ class MedicalRecordController extends Controller
         $q = MedicalRecord::with('patient:id,name,phone', 'doctor:id,name,title,specialty', 'appointment:id,appointment_date,appointment_time');
         $r = ($u->role === 'patient' ? $q->where('patient_id', $u->id) : $q->where('doctor_id', $u->id))->find($id);
         if (! $r) throw new BusinessException('病历记录不存在', ResponseCode::DATA_NOT_FOUND);
-        return Result::success('成功', ['id' => $r->id, 'symptoms' => $r->symptoms, 'imaging_findings' => $r->imaging_findings, 'preliminary_diagnosis' => $r->preliminary_diagnosis, 'treatment_plan' => $r->treatment_plan, 'doctor' => ['id' => $r->doctor->id ?? null, 'name' => $r->doctor->name ?? '', 'title' => $r->doctor->title ?? '', 'specialty' => $r->doctor->specialty ?? ''], 'patient' => ['id' => $r->patient->id ?? null, 'name' => $r->patient->name ?? '', 'phone' => $r->patient->phone ?? ''], 'appointment' => ['id' => $r->appointment->id ?? null, 'date' => $r->appointment->appointment_date ?? null, 'time' => $r->appointment->appointment_time ?? null], 'created_at' => $r->created_at, 'updated_at' => $r->updated_at]);
+        return Result::success('成功', ['id' => $r->id, 'symptoms' => $r->symptoms, 'imaging_findings' => $r->imaging_findings, 'preliminary_diagnosis' => $r->preliminary_diagnosis, 'treatment_plan' => $r->treatment_plan, 'doctor' => ['id' => $r->doctor->id ?? null, 'name' => $r->doctor->name ?? '', 'title' => $r->doctor->title ?? '', 'specialty' => $r->doctor->specialty ?? ''], 'patient' => ['id' => $r->patient->id ?? null, 'name' => $r->patient->name ?? '', 'phone' => $r->patient->phone ?? ''], 'appointment' => ['id' => $r->appointment->id ?? null, 'date' => $r->appointment->appointment_date?->format('Y-m-d'), 'time' => $r->appointment->appointment_time ?? null], 'created_at' => $r->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'), 'updated_at' => $r->updated_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')]);
     }
 
     public function store(Request $request): JsonResponse
@@ -42,8 +42,18 @@ class MedicalRecordController extends Controller
         $a = Appointment::where('doctor_id', $did)->find($v['appointment_id']);
         if (! $a) throw new BusinessException('预约不存在或无权限', ResponseCode::DATA_NOT_FOUND);
         if (MedicalRecord::where('appointment_id', $a->id)->exists()) throw new BusinessException('该预约已创建病历', ResponseCode::DUPLICATE_SUBMIT);
-        MedicalRecord::create(['appointment_id' => $a->id, 'patient_id' => $a->patient_id, 'doctor_id' => $did, 'symptoms' => $v['symptoms'], 'imaging_findings' => $v['imaging_findings'] ?? null, 'preliminary_diagnosis' => $v['preliminary_diagnosis'], 'treatment_plan' => $v['treatment_plan']]);
-        return Result::success('病历创建成功');
+        $r = MedicalRecord::create(['appointment_id' => $a->id, 'patient_id' => $a->patient_id, 'doctor_id' => $did, 'symptoms' => $v['symptoms'], 'imaging_findings' => $v['imaging_findings'] ?? null, 'preliminary_diagnosis' => $v['preliminary_diagnosis'], 'treatment_plan' => $v['treatment_plan']]);
+        return Result::success('病历创建成功', [
+            'id' => $r->id,
+            'symptoms' => $r->symptoms,
+            'imaging_findings' => $r->imaging_findings,
+            'preliminary_diagnosis' => $r->preliminary_diagnosis,
+            'treatment_plan' => $r->treatment_plan,
+            'patient' => ['id' => $a->patient_id, 'name' => $a->patient->name ?? '', 'phone' => $a->patient->phone ?? ''],
+            'appointment' => ['id' => $a->id, 'date' => $a->appointment_date?->format('Y-m-d'), 'time' => $a->appointment_time],
+            'created_at' => $r->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+            'updated_at' => $r->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+        ]);
     }
 
     public function update(int $id, Request $request): JsonResponse

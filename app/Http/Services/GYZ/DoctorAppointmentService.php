@@ -4,6 +4,7 @@ namespace App\Http\Services\GYZ;
 
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
+use App\Http\Services\GYZ\DrugService;
 use App\Models\Appointment;
 use App\Models\Drug;
 use App\Models\MedicalRecord;
@@ -26,7 +27,7 @@ class DoctorAppointmentService
             'in_progress_count' => Appointment::where('doctor_id', $doctorId)->where('appointment_date', $today)->where('status', 'in_progress')->count(),
             'completed_today' => Appointment::where('doctor_id', $doctorId)->where('appointment_date', $today)->where('status', 'completed')->count(),
             'total_drugs' => Drug::count(),
-            'low_stock_drugs' => Drug::where('stock_quantity', '<', 10)->count(),
+            'low_stock_drugs' => Drug::where('stock_quantity', '<', DrugService::LOW_STOCK_THRESHOLD)->count(),
         ];
     }
 
@@ -60,10 +61,10 @@ class DoctorAppointmentService
                 'patient_id' => $a->patient_id,
                 'patient_name' => $a->patient?->name,
                 'patient_phone' => $a->patient?->phone,
-                'appointment_date' => $a->appointment_date,
+                'appointment_date' => $a->appointment_date?->format('Y-m-d'),
                 'appointment_time' => $a->appointment_time,
                 'status' => $a->status,
-                'created_at' => $a->created_at?->toIso8601String(),
+                'created_at' => $a->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 
@@ -86,10 +87,12 @@ class DoctorAppointmentService
             ->where('appointment_id', '!=', $appointment->id)
             ->select(['id', 'appointment_id', 'preliminary_diagnosis'])
             ->latest()
+            ->limit(20)
             ->get()
             ->map(fn ($r) => [
-                'id' => $r->appointment_id,
-                'appointment_date' => $r->appointment?->appointment_date,
+                'id' => $r->id,
+                'appointment_id' => $r->appointment_id,
+                'appointment_date' => $r->appointment?->appointment_date?->format('Y-m-d'),
                 'preliminary_diagnosis' => $r->preliminary_diagnosis,
             ]);
 
@@ -99,7 +102,7 @@ class DoctorAppointmentService
             'patient_name' => $appointment->patient?->name,
             'patient_phone' => $appointment->patient?->phone,
             'patient_email' => $appointment->patient?->email,
-            'appointment_date' => $appointment->appointment_date,
+            'appointment_date' => $appointment->appointment_date?->format('Y-m-d'),
             'appointment_time' => $appointment->appointment_time,
             'status' => $appointment->status,
             'history_records' => $historyRecords->values(),
@@ -107,10 +110,10 @@ class DoctorAppointmentService
                 'id' => $d->id,
                 'type' => $d->type,
                 'risk_level' => $d->type === 'text' ? $d->risk_level : $d->risk_assessment,
-                'created_at' => $d->created_at?->toIso8601String(),
+                'created_at' => $d->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ])->values(),
-            'created_at' => $appointment->created_at?->toIso8601String(),
-            'updated_at' => $appointment->updated_at?->toIso8601String(),
+            'created_at' => $appointment->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+            'updated_at' => $appointment->updated_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
     }
 
@@ -131,7 +134,7 @@ class DoctorAppointmentService
             'status' => 'called',
         ]);
 
-        return ['id' => $appointment->id, 'status' => 'called', 'updated_at' => $appointment->updated_at->toIso8601String()];
+        return ['id' => $appointment->id, 'status' => 'called', 'updated_at' => $appointment->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')];
     }
 
     /**
@@ -151,7 +154,7 @@ class DoctorAppointmentService
             'status' => 'in_progress',
         ]);
 
-        return ['id' => $appointment->id, 'status' => 'in_progress', 'updated_at' => $appointment->updated_at->toIso8601String()];
+        return ['id' => $appointment->id, 'status' => 'in_progress', 'updated_at' => $appointment->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')];
     }
 
     /**
@@ -182,7 +185,7 @@ class DoctorAppointmentService
             'status' => 'completed',
         ]);
 
-        return ['id' => $appointment->id, 'status' => 'completed', 'updated_at' => $appointment->updated_at->toIso8601String()];
+        return ['id' => $appointment->id, 'status' => 'completed', 'updated_at' => $appointment->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')];
     }
 
     /**
@@ -201,7 +204,7 @@ class DoctorAppointmentService
             'appointment_id' => $appointmentId,
         ]);
 
-        return ['id' => $appointment->id, 'status' => 'cancelled', 'updated_at' => $appointment->updated_at->toIso8601String()];
+        return ['id' => $appointment->id, 'status' => 'cancelled', 'updated_at' => $appointment->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')];
     }
 
     private function findOwn(int $doctorId, int $id): Appointment

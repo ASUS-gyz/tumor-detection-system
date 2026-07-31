@@ -50,7 +50,7 @@ class OperationLogService
                 'target_id' => $l->target_id,
                 'content' => $l->content,
                 'ip' => $l->ip,
-                'created_at' => $l->created_at->toIso8601String(),
+                'created_at' => $l->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 }

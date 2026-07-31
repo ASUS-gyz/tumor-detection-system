@@ -28,12 +28,12 @@ class DoctorAiDiagnosisController extends Controller
     public function index(Request $request): JsonResponse
     {
         return Result::success(data: PaginationHelper::format(
-            $this->service->list($request->only(['page', 'size', 'patient_name', 'date_from', 'date_to']))
+            $this->service->list(auth()->id(), $request->only(['page', 'size', 'patient_name', 'date_from', 'date_to']))
         ));
     }
 
     public function show(int $id): JsonResponse
     {
-        return Result::success(data: $this->service->detail($id));
+        return Result::success(data: $this->service->detail(auth()->id(), $id));
     }
 }
