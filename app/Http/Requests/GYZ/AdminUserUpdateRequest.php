@@ -11,7 +11,7 @@ class AdminUserUpdateRequest extends BaseRequest
         return [
             'name' => 'string|min:2|max:50',
             'email' => 'email|max:255',
-            'phone' => 'string|max:20',
+            'phone' => 'nullable|string|max:20',
             'role' => 'in:patient,doctor,admin',
         ];
     }

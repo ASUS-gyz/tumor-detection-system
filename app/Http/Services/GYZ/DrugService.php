@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 class DrugService
 {
     /** 低库存阈值 */
-    private const LOW_STOCK_THRESHOLD = 10;
+    public const LOW_STOCK_THRESHOLD = 10;
 
     /**
      * 药品库存列表
@@ -28,7 +28,7 @@ class DrugService
         if (! empty($filters['category'])) {
             $query->where('category', $filters['category']);
         }
-        if (! empty($filters['low_stock'])) {
+        if (filter_var($filters['low_stock'] ?? false, FILTER_VALIDATE_BOOL)) {
             $query->where('stock_quantity', '<', self::LOW_STOCK_THRESHOLD);
         }
 
@@ -44,8 +44,8 @@ class DrugService
                 'price' => $d->price,
                 'description' => $d->description,
                 'is_low_stock' => $d->stock_quantity < self::LOW_STOCK_THRESHOLD,
-                'created_at' => $d->created_at->toIso8601String(),
-                'updated_at' => $d->updated_at->toIso8601String(),
+                'created_at' => $d->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+                'updated_at' => $d->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 
@@ -79,6 +79,9 @@ class DrugService
         }
         if (empty($data)) {
             throw new BusinessException('至少提供一个更新字段', ResponseCode::PARAM_ERROR);
+        }
+        if (! empty($data['name']) && Drug::where('name', $data['name'])->where('id', '!=', $id)->exists()) {
+            throw new BusinessException('药品名称已存在', ResponseCode::DATA_DUPLICATE);
         }
 
         $drug->update($data);
@@ -142,7 +145,7 @@ class DrugService
             'stock_quantity' => $drug->stock_quantity,
             'price' => $drug->price,
             'description' => $drug->description,
-            'created_at' => $drug->created_at->toIso8601String(),
+            'created_at' => $drug->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
     }
 }

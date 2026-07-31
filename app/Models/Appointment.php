@@ -15,8 +15,8 @@ class Appointment extends Model
     public function medicalRecord() { return $this->hasOne(MedicalRecord::class); }
     public function prescription() { return $this->hasOne(Prescription::class); }
     public function prescriptions() { return $this->hasMany(Prescription::class); }
-    public function aiDiagnoses() { return $this->hasMany(AIDiagnosis::class); }
-    public function aiDiagnosis() { return $this->hasOne(AIDiagnosis::class)->where('type', 'text')->latest(); }
+    public function aiDiagnoses() { return $this->hasMany(AiDiagnosis::class); }
+    public function aiDiagnosis() { return $this->hasOne(AiDiagnosis::class)->where('type', 'text')->latest(); }
 
     public function isActive(): bool { return in_array($this->status, ['pending', 'called', 'in_progress']); }
     public function canCancel(): bool { return $this->status === 'pending'; }

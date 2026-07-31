@@ -23,6 +23,11 @@ class AdminSystemController extends Controller
 
     public function operationLogs(Request $request): JsonResponse
     {
+        // 当通过 /admin/users/{id}/operation-logs 访问时，自动用路由参数筛选用户
+        if ($userId = $request->route('id')) {
+            $request->merge(['user_id' => (int) $userId]);
+        }
+
         return Result::success(data: PaginationHelper::format(
             $this->logService->list($request->only(['page', 'size', 'user_id', 'module', 'action', 'date_from', 'date_to']))
         ));

@@ -116,26 +116,28 @@ Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(func
     Route::post('/drugs/batch-stock-in', [DrugController::class, 'batchStockIn']);
 });
 
-// ═══════════════════ GYZ: 通知消息 ═══════════════════
+// ═══════════════════ GYZ: 通知消息 (4) ═══════════════════
 
 Route::middleware('auth:sanctum')->prefix('notifications')->group(function () {
     Route::get('/', [NotificationController::class, 'index']);
-    Route::post('/{id}/read', [NotificationController::class, 'markAsRead']);
-    Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::put('/{id}/read', [NotificationController::class, 'markRead']);
+    Route::put('/read-all', [NotificationController::class, 'markAllRead']);
     Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
 });
 
-// ═══════════════════ GYZ: 管理员端-用户管理 (5) ═══════════════════
+// ═══════════════════ GYZ: 管理员端-用户管理 (7) ═══════════════════
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/users', [AdminUserController::class, 'index']);
     Route::post('/users', [AdminUserController::class, 'store']);
+    Route::post('/users/batch-import', [AdminUserController::class, 'batchImport']);
+    Route::get('/users/{id}/operation-logs', [AdminSystemController::class, 'operationLogs']);
     Route::get('/users/{id}', [AdminUserController::class, 'show']);
     Route::put('/users/{id}', [AdminUserController::class, 'update']);
     Route::put('/users/{id}/status', [AdminUserController::class, 'toggleStatus']);
 });
 
-// ═══════════════════ GYZ: 管理员端-数据监控 (7) ═══════════════════
+// ═══════════════════ GYZ: 管理员端-数据监控 (11) ═══════════════════
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'dashboard']);
@@ -145,12 +147,16 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/ai-diagnoses', [AdminDashboardController::class, 'aiDiagnoses']);
     Route::get('/drugs', [AdminDashboardController::class, 'drugs']);
     Route::get('/stock-movements', [AdminDashboardController::class, 'stockMovements']);
+    Route::get('/statistics/doctor-workload', [AdminSystemController::class, 'doctorWorkload']);
+    Route::get('/statistics/drug-consumption', [AdminSystemController::class, 'drugConsumption']);
+    Route::get('/statistics/monthly-trend', [AdminSystemController::class, 'monthlyTrend']);
+    Route::get('/statistics/drug-overview', [AdminSystemController::class, 'drugOverview']);
 });
 
-// ═══════════════════ GYZ: 管理员端-系统管理 ═══════════════════
+// ═══════════════════ GYZ: 管理员端-系统管理 (3) ═══════════════════
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
-    Route::get('/configs', [AdminSystemController::class, 'index']);
-    Route::put('/configs', [AdminSystemController::class, 'update']);
-    Route::get('/logs', [AdminSystemController::class, 'logs']);
+    Route::get('/operation-logs', [AdminSystemController::class, 'operationLogs']);
+    Route::get('/system-configs', [AdminSystemController::class, 'configs']);
+    Route::put('/system-configs', [AdminSystemController::class, 'updateConfigs']);
 });

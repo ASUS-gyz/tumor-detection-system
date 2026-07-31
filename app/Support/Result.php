@@ -49,6 +49,28 @@ class Result
             'data' => $data,
             'success' => false,
             'trace_id' => request()->attributes->get('trace_id'),
-        ]);
+        ], self::httpStatus($code));
+    }
+
+    private static function httpStatus(ResponseCode $code): int
+    {
+        return match (true) {
+            $code === ResponseCode::UNAUTHORIZED,
+            $code === ResponseCode::TOKEN_EXPIRED,
+            $code === ResponseCode::TOKEN_ERROR,
+            $code === ResponseCode::LOGIN_EXPIRED  => 401,
+
+            $code === ResponseCode::FORBIDDEN         => 403,
+
+            $code === ResponseCode::DATA_NOT_FOUND,
+            $code === ResponseCode::DATA_DELETED      => 404,
+
+            $code->value >= 10000 && $code->value < 20000 => 422,
+
+            $code->value >= 60000                     => 500,
+            $code->value >= 50000                     => 502,
+
+            default                                   => 400,
+        };
     }
 }

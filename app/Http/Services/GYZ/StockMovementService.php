@@ -42,7 +42,7 @@ class StockMovementService
                 'reference_id' => $m->reference_id,
                 'remark' => $m->remark,
                 'operator_name' => $m->operator?->name ?? '系统',
-                'created_at' => $m->created_at->toIso8601String(),
+                'created_at' => $m->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 }

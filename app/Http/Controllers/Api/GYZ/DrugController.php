@@ -57,7 +57,7 @@ class DrugController extends Controller
     public function lowStock(Request $request): JsonResponse
     {
         return Result::success(data: PaginationHelper::format(
-            $this->drugService->list($request->merge(['low_stock' => true])->only(['page', 'size', 'low_stock']))
+            $this->drugService->list(array_merge($request->only(['page', 'size']), ['low_stock' => true]))
         ));
     }
 

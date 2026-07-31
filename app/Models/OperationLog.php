@@ -12,4 +12,9 @@ class OperationLog extends Model
         'user_id', 'user_name', 'action', 'module', 'target_type',
         'target_id', 'content', 'ip', 'created_at',
     ];
+
+    protected function casts(): array
+    {
+        return ['created_at' => 'datetime'];
+    }
 }

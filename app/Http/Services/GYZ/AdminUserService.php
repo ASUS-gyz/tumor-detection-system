@@ -37,7 +37,7 @@ class AdminUserService
                 'role' => $u->role,
                 'phone' => $u->phone,
                 'status' => $u->status,
-                'created_at' => $u->created_at?->toIso8601String(),
+                'created_at' => $u->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 
@@ -131,8 +131,8 @@ class AdminUserService
             'role' => $user->role,
             'phone' => $user->phone,
             'status' => $user->status,
-            'created_at' => $user->created_at?->toIso8601String(),
-            'updated_at' => $user->updated_at?->toIso8601String(),
+            'created_at' => $user->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+            'updated_at' => $user->updated_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
 
         if ($user->isDoctor()) {

@@ -53,7 +53,7 @@ class DoctorScheduleService
             'is_available' => $schedule->is_available,
             'time_slots' => $schedule->time_slots,
             'max_patients' => $schedule->max_patients,
-            'updated_at' => $schedule->updated_at->toIso8601String(),
+            'updated_at' => $schedule->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
     }
 }

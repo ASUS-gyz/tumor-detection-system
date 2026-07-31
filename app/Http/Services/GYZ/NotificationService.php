@@ -41,7 +41,7 @@ class NotificationService
                 'is_read' => $n->is_read,
                 'reference_type' => $n->reference_type,
                 'reference_id' => $n->reference_id,
-                'created_at' => $n->created_at->toIso8601String(),
+                'created_at' => $n->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);
     }
 

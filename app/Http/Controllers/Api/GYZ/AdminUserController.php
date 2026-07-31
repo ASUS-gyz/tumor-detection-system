@@ -45,11 +45,16 @@ class AdminUserController extends Controller
 
     public function batchImport(Request $request): JsonResponse
     {
+        $users = $request->input('users', []);
+        if (empty($users) || ! is_array($users)) {
+            return Result::error(\App\Enums\ResponseCode::PARAM_ERROR, 'users 参数必须是非空数组');
+        }
+
         $created = [];
-        foreach ($request->input('users', []) as $userData) {
+        foreach ($users as $userData) {
             $created[] = $this->service->create($userData);
         }
 
-        return Result::success(msg: "成功导入 {$request->input('count', count($created))} 个账号", data: ['count' => count($created)]);
+        return Result::success(msg: "成功导入 " . count($created) . " 个账号", data: ['count' => count($created)]);
     }
 }
