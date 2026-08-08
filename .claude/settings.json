@@ -8,7 +8,8 @@
       "Bash(php -r ' *)",
       "Bash(grep \"：\\\\`\" \"docs/conclusion/肿瘤科智能检测门诊系统后端接口文档-v2.md\")",
       "Bash(curl -s http://127.0.0.1:8000/api/doctor/medical-records -X POST -H \"Content-Type: application/json\" -H \"Accept: application/json\" -H \"Authorization: Bearer 3xJq0Ma6Mf6xWkOhBPqnKeiwdVXJdiKNNRmAt4Fq\" -d '{\"appointment_id\":9,\"symptoms\":\"咳嗽三周\",\"preliminary_diagnosis\":\"右肺占位\",\"treatment_plan\":\"建议CT穿刺\"}')",
-      "Bash(curl -v http://127.0.0.1:8000/api/doctor/medical-records -X POST -H \"Content-Type: application/json\" -H \"Accept: application/json\" -H \"Authorization: Bearer 3xJq0Ma6Mf6xWkOhBPqnKeiwdVXJdiKNNRmAt4Fq\" -d \"{\\\\\"appointment_id\\\\\":9,\\\\\"symptoms\\\\\":\\\\\"咳嗽三周\\\\\",\\\\\"preliminary_diagnosis\\\\\":\\\\\"右肺占位\\\\\",\\\\\"treatment_plan\\\\\":\\\\\"建议CT穿刺\\\\\"}\")"
+      "Bash(curl -v http://127.0.0.1:8000/api/doctor/medical-records -X POST -H \"Content-Type: application/json\" -H \"Accept: application/json\" -H \"Authorization: Bearer 3xJq0Ma6Mf6xWkOhBPqnKeiwdVXJdiKNNRmAt4Fq\" -d \"{\\\\\"appointment_id\\\\\":9,\\\\\"symptoms\\\\\":\\\\\"咳嗽三周\\\\\",\\\\\"preliminary_diagnosis\\\\\":\\\\\"右肺占位\\\\\",\\\\\"treatment_plan\\\\\":\\\\\"建议CT穿刺\\\\\"}\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000)"
     ],
     "additionalDirectories": [
       "c:\\projects\\tumor-detection-system\\app\\Http"
