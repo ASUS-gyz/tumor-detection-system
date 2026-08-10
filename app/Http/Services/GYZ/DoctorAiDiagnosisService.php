@@ -31,8 +31,7 @@ class DoctorAiDiagnosisService
             $qwen = app(QwenVisionService::class);
             $result = $qwen->analyze($image, $description);
         } else {
-            // mock 模式
-            sleep((int) config('ai.mock.image_diagnosis_delay', 2));
+            // mock 模式：直接返回模拟数据，不阻塞
             $result = [
                 'imaging_features'          => 'CT影像显示：右肺上叶后段见约2.5cm×1.8cm结节影，边界欠清，呈分叶状，密度不均匀，可见毛刺征及胸膜凹陷征。邻近胸膜轻度增厚。增强扫描示结节呈不均匀强化。',
                 'risk_assessment'           => '高风险',

@@ -5,6 +5,7 @@ namespace App\Http\Services\GYZ;
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
 use App\Models\Drug;
+use App\Models\DrugStock;
 use App\Models\StockMovement;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -103,6 +104,12 @@ class DrugService
             $before = $drug->stock_quantity;
             $after = $before + $quantity;
             $drug->update(['stock_quantity' => $after]);
+
+            // 同步 ZZT 的 drug_stocks 表，保持两套库存一致
+            DrugStock::updateOrCreate(
+                ['drug_id' => $drug->id],
+                ['quantity' => $after]
+            );
 
             $movement = StockMovement::create([
                 'drug_id' => $drug->id,
