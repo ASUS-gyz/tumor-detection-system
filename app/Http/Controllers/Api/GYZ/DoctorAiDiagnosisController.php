@@ -19,7 +19,7 @@ class DoctorAiDiagnosisController extends Controller
         return Result::success(msg: 'AI图文诊断完成', data: $this->service->create(
             auth()->id(),
             $request->integer('patient_id'),
-            $request->integer('appointment_id'),
+            $request->filled('appointment_id') ? $request->integer('appointment_id') : null,
             $request->file('image'),
             $request->input('description')
         ));

@@ -103,13 +103,21 @@ class AIDiagnosisService extends BaseService
                     : '你是肿瘤科医生，按JSON返回：imaging_features,risk_assessment,suspected_lesions,treatment_recommendations,confidence'],
                 ['role' => 'user', 'content' => is_array($input) ? $input['description'] : $input],
             ];
-            $response = $client->post(config('ai.api.url'), [
-                'headers' => ['Authorization' => 'Bearer '.config('ai.api.key'), 'Content-Type' => 'application/json'],
-                'json' => ['model' => config('ai.api.model'), 'messages' => $messages, 'temperature' => 0.7, 'response_format' => ['type' => 'json_object']],
-                'timeout' => config('ai.api.timeout'),
+            $response = $client->post(config('ai.qwen.url'), [
+                'headers' => ['Authorization' => 'Bearer '.config('ai.qwen.key'), 'Content-Type' => 'application/json'],
+                'json' => ['model' => config('ai.qwen.model'), 'messages' => $messages, 'temperature' => 0.7, 'response_format' => ['type' => 'json_object']],
+                'timeout' => config('ai.qwen.timeout'),
             ]);
             $data = json_decode($response->getBody(), true);
             $result = json_decode($data['choices'][0]['message']['content'] ?? '{}', true);
+            if (is_array($result)) {
+                // 远程模型可能把文本字段返回为数组，非列表字段拍平为字符串，避免入库报 Array to string conversion
+                foreach ($result as $k => $v) {
+                    if (is_array($v) && $k !== 'possible_conditions') {
+                        $result[$k] = implode('；', array_map(fn ($x) => is_scalar($x) ? (string) $x : json_encode($x, JSON_UNESCAPED_UNICODE), $v));
+                    }
+                }
+            }
             return $result ?: ($type === 'text' ? $this->mockTextDiagnosis((string)$input) : $this->mockImageDiagnosis((string)($input['description'] ?? '')));
         } catch (\Exception $e) {
             Log::error('AI调用失败', ['error' => $e->getMessage()]);

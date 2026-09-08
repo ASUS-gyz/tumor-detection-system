@@ -15,6 +15,6 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call(GYZTestDataSeeder::class);
+        $this->call([GYZTestDataSeeder::class, BulkDataSeeder::class]);
     }
 }
