@@ -88,7 +88,51 @@ class PrescriptionController extends Controller
     }
 
     public function refill(int $id, Request $request): JsonResponse
-    { $p = Prescription::with('items.drug')->where('patient_id', $request->user()->id)->find($id); if (! $p) throw new BusinessException('处方不存在', ResponseCode::DATA_NOT_FOUND); if ($p->status !== 'dispensed') throw new BusinessException('仅可续方已取药处方', ResponseCode::STATUS_NOT_ALLOWED); return Result::success('续方申请已提交', ['original_prescription_id' => $p->id, 'items' => $p->items->map(fn($i) => ['drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'quantity' => $i->quantity])]); }
+    {
+        // 真实落库：按原处方复制一条 pending 新处方（同预约同医生），并通知医生
+        [$newRx, $original] = DB::transaction(function () use ($id, $request) {
+            $p = Prescription::with('items')->where('patient_id', $request->user()->id)->lockForUpdate()->find($id);
+            if (! $p) throw new BusinessException('处方不存在', ResponseCode::DATA_NOT_FOUND);
+            if ($p->status !== 'dispensed') throw new BusinessException('仅可续方已取药处方', ResponseCode::STATUS_NOT_ALLOWED);
+            // 同一预约下已存在待取药处方（上次续方未取完）时不重复建单
+            if (Prescription::where('appointment_id', $p->appointment_id)->where('status', 'pending')->where('id', '!=', $p->id)->exists()) {
+                throw new BusinessException('该处方已有未取药的续方申请，请先完成取药', ResponseCode::DUPLICATE_SUBMIT);
+            }
+
+            $new = Prescription::create([
+                'appointment_id' => $p->appointment_id,
+                'patient_id' => $p->patient_id,
+                'doctor_id' => $p->doctor_id,
+                'status' => 'pending',
+            ]);
+            foreach ($p->items as $i) {
+                PrescriptionItem::create([
+                    'prescription_id' => $new->id,
+                    'drug_id' => $i->drug_id,
+                    'quantity' => $i->quantity,
+                    'dosage' => $i->dosage,
+                    'instructions' => $i->instructions,
+                ]);
+            }
+
+            return [$new->load('items.drug:id,name'), $p];
+        });
+
+        NotificationService::send($newRx->doctor_id, 'prescription_ready', '续方申请', "患者提交了续方申请（原处方 #{$original->id}，新处方 #{$newRx->id}），请确认后发药", 'prescription', $newRx->id);
+
+        Log::channel('business')->info('患者提交续方', [
+            'patient_id' => $newRx->patient_id,
+            'original_prescription_id' => $original->id,
+            'new_prescription_id' => $newRx->id,
+        ]);
+
+        return Result::success('续方申请已提交', [
+            'prescription_id' => $newRx->id,
+            'original_prescription_id' => $original->id,
+            'status' => $newRx->status,
+            'items' => $newRx->items->map(fn($i) => ['drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'quantity' => $i->quantity]),
+        ]);
+    }
 
     public function medicationReminders(Request $request): JsonResponse
     { $ps = Prescription::with('items.drug', 'doctor:id,name')->where('patient_id', $request->user()->id)->where('status', 'pending')->get(); $r = []; foreach ($ps as $p) foreach ($p->items as $i) $r[] = ['prescription_id' => $p->id, 'drug_name' => $i->drug->name ?? '', 'dosage' => $i->dosage, 'instructions' => $i->instructions, 'doctor_name' => $p->doctor->name ?? '', 'created_at' => $p->created_at]; return Result::success('成功', ['reminders' => $r, 'total' => count($r)]); }
