@@ -75,6 +75,14 @@ return Application::configure(basePath: dirname(__DIR__))
             )
         );
 
+        // 签名 URL 校验失败（过期/被篡改）
+        $exceptions->render(
+            fn(\Illuminate\Routing\Exceptions\InvalidSignatureException $_e) => \App\Support\Result::error(
+                \App\Enums\ResponseCode::FORBIDDEN,
+                '链接已失效或签名不正确'
+            )
+        );
+
         // 数据库异常
         $exceptions->render(function (\Illuminate\Database\QueryException $e, Request $request) {
             Log::channel('exception')->error('数据库异常', [

@@ -52,6 +52,9 @@ class PrescriptionController extends Controller
         if ($ins) return Result::error(ResponseCode::STOCK_NOT_ENOUGH, '库存不足：' . implode('、', array_column($ins, 'drug_name')), ['detail' => $ins]);
         DB::beginTransaction();
         try {
+            // 行锁复查状态：并发双击取药时第二个请求在锁上等待，拿到锁后状态已变更，拒绝重复出库
+            $rx = Prescription::with('items')->where('id', $rx->id)->lockForUpdate()->first();
+            if (! $rx || $rx->status !== 'pending') throw new BusinessException($rx?->status === 'dispensed' ? '已取药' : '状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
             foreach ($rx->items as $i) {
                 // 双轨同步：drugs.stock_quantity 与 drug_stocks.quantity 必须一致扣减。
                 // 先锁 drugs 再锁 drug_stocks，与 GYZ 入库（DrugService::stockIn）加锁顺序一致，避免死锁。
@@ -66,7 +69,7 @@ class PrescriptionController extends Controller
                 StockMovement::create(['drug_id' => $i->drug_id, 'type' => 'out', 'quantity' => $i->quantity, 'before_quantity' => $b, 'after_quantity' => $s->quantity, 'reference_type' => 'prescription_dispense', 'reference_id' => $rx->id, 'remark' => '处方发药出库', 'operator_id' => $request->user()->id, 'created_at' => now()]);
             }
             $rx->status = 'dispensed'; $rx->save(); DB::commit();
-        } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('取药失败', ResponseCode::BUSINESS_ERROR); }
+        } catch (BusinessException $e) { DB::rollBack(); throw $e; } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('取药失败', ResponseCode::BUSINESS_ERROR); }
 
         // 低库存预警：发药后低于阈值的药品通知全部管理员（旁路，不阻断取药）
         try {

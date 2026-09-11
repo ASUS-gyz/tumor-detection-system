@@ -6,6 +6,7 @@ use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
 use App\Models\AIDiagnosis;
+use App\Models\Appointment;
 use App\Http\Services\ZZT\AIDiagnosisService;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
@@ -17,8 +18,12 @@ class AIDiagnosisController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $request->validate(['symptom_description' => 'required|string|min:2|max:2000', 'appointment_id' => 'nullable|integer']);
+        $request->validate(['symptom_description' => 'required|string|min:2|max:2000', 'appointment_id' => 'nullable|integer|exists:appointments,id']);
         $pid = $request->user()->id;
+        // 关联预约必须存在且属于当前患者，防止挂到他人预约上
+        if ($request->filled('appointment_id') && ! Appointment::where('id', $request->integer('appointment_id'))->where('patient_id', $pid)->exists()) {
+            throw new BusinessException('预约不存在', ResponseCode::DATA_NOT_FOUND);
+        }
         $r = $this->ai->textDiagnosis($request->input('symptom_description'), $pid);
         $d = AIDiagnosis::create(['type' => 'text', 'patient_id' => $pid, 'appointment_id' => $request->input('appointment_id'), 'symptom_description' => $request->input('symptom_description'), 'analysis' => $r['analysis'] ?? '', 'risk_level' => $r['risk_level'] ?? '低风险', 'risk_warning' => $r['risk_warning'] ?? null, 'advice' => $r['advice'] ?? '', 'possible_conditions' => $r['possible_conditions'] ?? []]);
         return Result::success('诊断完成', $this->fmt($d));

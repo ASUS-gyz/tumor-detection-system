@@ -28,7 +28,7 @@ class ApiLogMiddleware
             'trace_id' => $request->attributes->get('trace_id'),
             'method' => $request->method(),
             'url' => $request->fullUrl(),
-            'status' => $response->status(),
+            'status' => $response->getStatusCode(),
             'duration' => $duration,
         ]);
 

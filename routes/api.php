@@ -98,6 +98,12 @@ Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(func
 
 // ═══════════════════ GYZ: 医生端-AI图文诊断 (3) ═══════════════════
 
+// 影像文件走私有磁盘，凭限时签名 URL 访问（免登录但防篡改防过期）
+Route::get('/ai-image/{file}', [DoctorAiDiagnosisController::class, 'serveImage'])
+    ->name('ai-image.show')
+    ->middleware('signed')
+    ->where('file', '[A-Za-z0-9._-]+');
+
 Route::middleware(['auth:sanctum', 'role:doctor'])->prefix('doctor')->group(function () {
     Route::post('/ai-diagnosis', [DoctorAiDiagnosisController::class, 'store']);
     Route::get('/ai-diagnosis', [DoctorAiDiagnosisController::class, 'index']);
