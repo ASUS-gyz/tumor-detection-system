@@ -4,6 +4,7 @@ namespace App\Http\Services\GYZ;
 
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
+use App\Http\Services\ZZT\AIDiagnosisService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -94,13 +95,13 @@ class QwenVisionService
 PROMPT;
     }
 
-    private function parseResponse(array $body): array
+    private function parseResponse(?array $body): array
     {
         // OpenAI 兼容格式: choices[0].message.content
         $text = $body['choices'][0]['message']['content'] ?? '';
 
-        $text = trim($text);
-        if (empty($text)) {
+        $text = trim((string) $text);
+        if ($text === '') {
             throw new BusinessException('AI 返回内容为空', ResponseCode::THIRD_PARTY_ERROR);
         }
 
@@ -121,7 +122,8 @@ PROMPT;
 
         return [
             'imaging_features'          => is_array($parsed['imaging_features'] ?? null) ? implode('', $parsed['imaging_features']) : ($parsed['imaging_features'] ?? ''),
-            'risk_assessment'           => $parsed['risk_assessment'] ?? '未知',
+            // 风险词归一化为 低风险/中风险/高风险（远程模型可能返回"中度风险"等变体，无匹配归为 未知）
+            'risk_assessment'           => AIDiagnosisService::normalizeRiskLevel((string) ($parsed['risk_assessment'] ?? '')),
             'suspected_lesions'         => is_array($parsed['suspected_lesions'] ?? null) ? implode('', $parsed['suspected_lesions']) : ($parsed['suspected_lesions'] ?? ''),
             'treatment_recommendations' => $treatment,
             'confidence'                => $parsed['confidence'] ?? 'N/A',

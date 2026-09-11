@@ -13,8 +13,18 @@ use Illuminate\Support\Facades\Log;
 
 class DrugService
 {
-    /** 低库存阈值 */
+    /** 低库存阈值兜底默认值（真实阈值以 system_configs.stock_low_threshold 为准） */
     public const LOW_STOCK_THRESHOLD = 10;
+
+    /**
+     * 低库存预警阈值：system_configs.stock_low_threshold 可配置，缺失/非法时回退常量
+     */
+    public static function lowStockThreshold(): int
+    {
+        $v = SystemConfigService::getVal('stock_low_threshold');
+
+        return is_numeric($v) && (int) $v > 0 ? (int) $v : self::LOW_STOCK_THRESHOLD;
+    }
 
     /**
      * 药品库存列表
@@ -30,7 +40,7 @@ class DrugService
             $query->where('category', $filters['category']);
         }
         if (filter_var($filters['low_stock'] ?? false, FILTER_VALIDATE_BOOL)) {
-            $query->where('stock_quantity', '<', self::LOW_STOCK_THRESHOLD);
+            $query->where('stock_quantity', '<', self::lowStockThreshold());
         }
 
         return $query->orderBy('id')
@@ -44,7 +54,7 @@ class DrugService
                 'stock_quantity' => $d->stock_quantity,
                 'price' => $d->price,
                 'description' => $d->description,
-                'is_low_stock' => $d->stock_quantity < self::LOW_STOCK_THRESHOLD,
+                'is_low_stock' => $d->stock_quantity < self::lowStockThreshold(),
                 'created_at' => $d->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
                 'updated_at' => $d->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
             ]);

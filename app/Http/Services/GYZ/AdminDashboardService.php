@@ -25,7 +25,7 @@ class AdminDashboardService
             'today_appointments' => Appointment::whereDate('appointment_date', now()->toDateString())->count(),
             'total_prescriptions' => Prescription::count(),
             'total_ai_diagnoses' => AiDiagnosis::count(),
-            'low_stock_drugs' => Drug::where('stock_quantity', '<', DrugService::LOW_STOCK_THRESHOLD)->count(),
+            'low_stock_drugs' => Drug::where('stock_quantity', '<', DrugService::lowStockThreshold())->count(),
         ];
     }
 
@@ -185,8 +185,10 @@ class AdminDashboardService
     private function applySort($query, array $filters, array $allowedColumns, string $default = 'created_at:desc'): void
     {
         $sort = $filters['sort'] ?? $default;
-        [$col, $dir] = explode(':', $sort);
-        $dir = strtolower($dir);
+        // sort 允许只传列名（无 ":dir"），缺省降序
+        $parts = explode(':', $sort);
+        $col = $parts[0];
+        $dir = strtolower($parts[1] ?? 'desc');
         if (! in_array($col, $allowedColumns, true)) {
             $col = 'created_at';
         }
