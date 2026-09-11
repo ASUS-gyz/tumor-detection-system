@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\GYZ;
 
 use App\Http\Controllers\Controller;
+use App\Exceptions\BusinessException;
 use App\Http\Requests\GYZ\DrugCreateRequest;
 use App\Http\Requests\GYZ\DrugUpdateRequest;
 use App\Http\Requests\GYZ\StockInRequest;
@@ -12,6 +13,7 @@ use App\Support\PaginationHelper;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class DrugController extends Controller
 {
@@ -63,16 +65,32 @@ class DrugController extends Controller
 
     public function batchStockIn(Request $request): JsonResponse
     {
-        $results = [];
-        foreach ($request->input('items', []) as $item) {
-            $results[] = $this->drugService->stockIn(
-                $item['drug_id'],
-                $item['quantity'],
-                $item['remark'] ?? null,
-                auth()->id()
-            );
-        }
+        $request->validate([
+            'items' => 'required|array|min:1|max:200',
+            'items.*.drug_id' => 'required|integer|exists:drugs,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.remark' => 'nullable|string|max:255',
+        ]);
 
-        return Result::success(msg: '批量入库完成', data: $results);
+        // 逐条隔离：单条失败不影响其余项，返回逐条成功/失败清单
+        $results = []; $ok = 0;
+        foreach ($request->input('items') as $idx => $item) {
+            try {
+                $this->drugService->stockIn((int) $item['drug_id'], (int) $item['quantity'], $item['remark'] ?? null, auth()->id());
+                $results[] = ['index' => $idx, 'drug_id' => (int) $item['drug_id'], 'ok' => true];
+                $ok++;
+            } catch (BusinessException $e) {
+                $results[] = ['index' => $idx, 'drug_id' => (int) ($item['drug_id'] ?? 0), 'ok' => false, 'error' => $e->getMessage()];
+            } catch (\Throwable $e) {
+                Log::error('批量入库单项失败', ['index' => $idx, 'item' => $item, 'error' => $e->getMessage()]);
+                $results[] = ['index' => $idx, 'drug_id' => (int) ($item['drug_id'] ?? 0), 'ok' => false, 'error' => '系统异常'];
+            }
+        }
+        $fail = count($results) - $ok;
+
+        return Result::success(
+            msg: $fail === 0 ? '批量入库完成' : "批量入库完成：成功 {$ok} 项，失败 {$fail} 项",
+            data: ['total' => count($results), 'success' => $ok, 'failed' => $fail, 'results' => $results]
+        );
     }
 }

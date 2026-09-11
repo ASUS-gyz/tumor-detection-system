@@ -9,6 +9,7 @@ use App\Http\Requests\ZZT\ChangePasswordRequest;
 use App\Http\Requests\ZZT\LoginRequest;
 use App\Http\Requests\ZZT\RegisterRequest;
 use App\Http\Requests\ZZT\UpdateProfileRequest;
+use App\Http\Services\GYZ\OperationLogService;
 use App\Models\User;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
@@ -34,11 +35,12 @@ class AuthController extends Controller
         if (! $user || ! Hash::check($v['password'], $user->password)) { throw new BusinessException('邮箱或密码不正确', ResponseCode::PASSWORD_ERROR); }
         if ($user->status === 'disabled') { throw new BusinessException('账号已被禁用', ResponseCode::ACCOUNT_DISABLED); }
         $t = $user->createToken('auth_token');
+        OperationLogService::log('login', 'system', 'user', $user->id, '用户登录', $user->id, $user->name);
         return Result::success('登录成功', ['user' => $this->fmt($user), 'token' => $t['plainTextToken'], 'token_type' => 'Bearer']);
     }
 
     public function logout(Request $request): JsonResponse
-    { $request->user()->tokens()->delete(); return Result::success('退出成功'); }
+    { OperationLogService::log('logout', 'system', 'user', $request->user()->id, '用户退出'); $request->user()->tokens()->delete(); return Result::success('退出成功'); }
 
     public function me(Request $request): JsonResponse
     { return Result::success('成功', $this->fmt($request->user())); }
