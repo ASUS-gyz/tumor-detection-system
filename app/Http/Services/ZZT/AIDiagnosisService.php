@@ -61,9 +61,7 @@ class AIDiagnosisService extends BaseService
      */
     private function mockTextDiagnosis(string $symptomDescription): array
     {
-        $delay = (int) config('ai.mock.text_diagnosis_delay', 2);
-        sleep(min($delay, 5)); // 最大不超过 5 秒
-
+        // mock 结果为预设数据，无需模拟真实 API 延迟阻塞请求
         return [
             'analysis' => '根据您的描述，可能存在以下情况：' . mb_substr($symptomDescription, 0, 30) . '...',
             'risk_level' => '低风险',
@@ -78,9 +76,6 @@ class AIDiagnosisService extends BaseService
      */
     private function mockImageDiagnosis(string $description): array
     {
-        $delay = (int) config('ai.mock.image_diagnosis_delay', 3);
-        sleep(min($delay, 5));
-
         return [
             'imaging_features' => 'CT影像显示：局部组织密度改变，边界尚清晰，未见明显浸润征象。',
             'risk_assessment' => '中度风险',
