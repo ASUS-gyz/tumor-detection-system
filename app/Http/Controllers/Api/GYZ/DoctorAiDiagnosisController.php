@@ -9,10 +9,22 @@ use App\Support\PaginationHelper;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DoctorAiDiagnosisController extends Controller
 {
     public function __construct(private DoctorAiDiagnosisService $service) {}
+
+    /**
+     * 影像文件下载（私有磁盘）：仅限携带有效签名 URL 访问，无需登录态
+     */
+    public function serveImage(string $file): StreamedResponse
+    {
+        abort_unless(preg_match('/^[A-Za-z0-9._-]+$/', $file) && Storage::disk('local')->exists('ai-images/'.$file), 404);
+
+        return Storage::disk('local')->response('ai-images/'.$file);
+    }
 
     public function store(AiImageDiagnosisRequest $request): JsonResponse
     {

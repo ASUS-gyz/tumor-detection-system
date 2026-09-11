@@ -2,6 +2,8 @@
 
 namespace App\Http\Services\GYZ;
 
+use App\Enums\ResponseCode;
+use App\Exceptions\BusinessException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -48,10 +50,15 @@ class QwenVisionService
         ]);
 
         $start  = microtime(true);
-        $resp   = Http::timeout(config('ai.qwen.timeout'))
-            ->withToken(config('ai.qwen.key'))
-            ->acceptJson()
-            ->post(config('ai.qwen.url'), $payload);
+        try {
+            $resp = Http::timeout(config('ai.qwen.timeout'))
+                ->withToken(config('ai.qwen.key'))
+                ->acceptJson()
+                ->post(config('ai.qwen.url'), $payload);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::channel('exception')->error('千问VL连接失败', ['error' => $e->getMessage()]);
+            throw new BusinessException('AI 诊断服务连接失败，请稍后重试', ResponseCode::THIRD_PARTY_ERROR);
+        }
         $elapsed = round((microtime(true) - $start) * 1000);
 
         Log::channel('api')->info('千问VL响应', [
@@ -64,7 +71,7 @@ class QwenVisionService
                 'status' => $resp->status(),
                 'body'   => $resp->body(),
             ]);
-            throw new \RuntimeException('AI 诊断服务暂时不可用，请稍后重试');
+            throw new BusinessException('AI 诊断服务暂时不可用，请稍后重试', ResponseCode::THIRD_PARTY_ERROR);
         }
 
         return $this->parseResponse($resp->json());
@@ -94,7 +101,7 @@ PROMPT;
 
         $text = trim($text);
         if (empty($text)) {
-            throw new \RuntimeException('AI 返回内容为空');
+            throw new BusinessException('AI 返回内容为空', ResponseCode::THIRD_PARTY_ERROR);
         }
 
         // 清理可能的 markdown 代码块标记
@@ -103,7 +110,7 @@ PROMPT;
 
         $parsed = json_decode($text, true);
         if (! is_array($parsed)) {
-            throw new \RuntimeException('AI 返回格式异常，未能解析为JSON');
+            throw new BusinessException('AI 返回格式异常', ResponseCode::THIRD_PARTY_ERROR);
         }
 
         // 千问可能把分条建议返回为数组，统一转成字符串

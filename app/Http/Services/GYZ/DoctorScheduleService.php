@@ -39,14 +39,31 @@ class DoctorScheduleService
      */
     public function set(int $doctorId, int $dayOfWeek, array $data): array
     {
-        $schedule = DoctorSchedule::updateOrCreate(
-            ['doctor_id' => $doctorId, 'day_of_week' => $dayOfWeek],
-            [
-                'is_available' => $data['is_available'] ?? true,
-                'time_slots' => $data['time_slots'] ?? self::DEFAULT_SLOTS,
-                'max_patients' => $data['max_patients'] ?? 20,
-            ]
-        );
+        $newRow = function () use ($doctorId, $dayOfWeek): DoctorSchedule {
+            $s = DoctorSchedule::firstOrNew(['doctor_id' => $doctorId, 'day_of_week' => $dayOfWeek]);
+            if (! $s->exists) {
+                // 仅新建行使用缺省值；已有行未提交字段保持原值，避免部分更新把停诊/自定义时段静默重置
+                $s->is_available = true;
+                $s->time_slots = self::DEFAULT_SLOTS;
+                $s->max_patients = 20;
+            }
+            return $s;
+        };
+
+        $schedule = $newRow();
+        $this->applyData($schedule, $data);
+
+        try {
+            $schedule->save();
+        } catch (\Illuminate\Database\QueryException $e) {
+            // 并发首次设置同一星期几：撞 (doctor_id, day_of_week) 唯一键 → 取既有行按更新路径重放
+            if ((int) ($e->errorInfo[1] ?? 0) !== 1062) {
+                throw $e;
+            }
+            $schedule = $newRow();
+            $this->applyData($schedule, $data);
+            $schedule->save();
+        }
 
         return [
             'day_of_week' => $schedule->day_of_week,
@@ -55,5 +72,18 @@ class DoctorScheduleService
             'max_patients' => $schedule->max_patients,
             'updated_at' => $schedule->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * 仅应用请求中显式提交的字段（缺省值只用于新建行）
+     */
+    private function applyData(DoctorSchedule $s, array $data): void
+    {
+        $defaults = ['is_available' => true, 'time_slots' => self::DEFAULT_SLOTS, 'max_patients' => 20];
+        foreach ($defaults as $field => $default) {
+            if (array_key_exists($field, $data)) {
+                $s->{$field} = $data[$field] ?? $default;
+            }
+        }
     }
 }

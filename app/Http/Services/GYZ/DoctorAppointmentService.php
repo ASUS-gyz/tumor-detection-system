@@ -10,6 +10,7 @@ use App\Models\Drug;
 use App\Models\MedicalRecord;
 use App\Models\Prescription;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class DoctorAppointmentService
@@ -122,11 +123,7 @@ class DoctorAppointmentService
      */
     public function call(int $doctorId, int $appointmentId): array
     {
-        $appointment = $this->findOwn($doctorId, $appointmentId);
-        if (! $appointment->isPending()) {
-            throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-        $appointment->update(['status' => 'called']);
+        $appointment = $this->transition($doctorId, $appointmentId, ['pending'], 'called');
 
         // 通知患者叫号
         NotificationService::send($appointment->patient_id, 'appointment_call', '叫号提醒', '医生已叫号，请您前往诊室就诊', 'appointment', $appointment->id);
@@ -145,11 +142,7 @@ class DoctorAppointmentService
      */
     public function start(int $doctorId, int $appointmentId): array
     {
-        $appointment = $this->findOwn($doctorId, $appointmentId);
-        if (! $appointment->isCalled()) {
-            throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-        $appointment->update(['status' => 'in_progress']);
+        $appointment = $this->transition($doctorId, $appointmentId, ['called'], 'in_progress');
 
         Log::channel('business')->info('医生开始接诊', [
             'doctor_id' => $doctorId,
@@ -165,22 +158,22 @@ class DoctorAppointmentService
      */
     public function complete(int $doctorId, int $appointmentId): array
     {
-        $appointment = $this->findOwn($doctorId, $appointmentId);
-        if (! $appointment->isInProgress()) {
-            throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-
-        $hasRecord = MedicalRecord::where('appointment_id', $appointmentId)->exists();
-        if (! $hasRecord) {
-            throw new BusinessException('还未填写病历，无法结束接诊', ResponseCode::BUSINESS_ERROR);
-        }
-
-        $hasPrescription = Prescription::where('appointment_id', $appointmentId)->exists();
-        if (! $hasPrescription) {
-            throw new BusinessException('还未开具处方，无法结束接诊', ResponseCode::BUSINESS_ERROR);
-        }
-
-        $appointment->update(['status' => 'completed']);
+        // 病历/处方存在性检查放在行锁内，避免与并发开方互相错过
+        $appointment = DB::transaction(function () use ($doctorId, $appointmentId) {
+            $a = Appointment::where('doctor_id', $doctorId)->where('id', $appointmentId)->lockForUpdate()->first()
+                ?? throw new BusinessException('预约不存在或不属于当前医生', ResponseCode::DATA_NOT_FOUND);
+            if (! $a->isInProgress()) {
+                throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
+            }
+            if (! MedicalRecord::where('appointment_id', $appointmentId)->exists()) {
+                throw new BusinessException('还未填写病历，无法结束接诊', ResponseCode::BUSINESS_ERROR);
+            }
+            if (! Prescription::where('appointment_id', $appointmentId)->exists()) {
+                throw new BusinessException('还未开具处方，无法结束接诊', ResponseCode::BUSINESS_ERROR);
+            }
+            $a->update(['status' => 'completed']);
+            return $a;
+        });
 
         Log::channel('business')->info('医生结束接诊', [
             'doctor_id' => $doctorId,
@@ -196,11 +189,7 @@ class DoctorAppointmentService
      */
     public function reject(int $doctorId, int $appointmentId): array
     {
-        $appointment = $this->findOwn($doctorId, $appointmentId);
-        if (! $appointment->isPending()) {
-            throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
-        }
-        $appointment->update(['status' => 'cancelled']);
+        $appointment = $this->transition($doctorId, $appointmentId, ['pending'], 'cancelled');
 
         // 通知患者预约被拒
         NotificationService::send($appointment->patient_id, 'system', '预约被拒', '很抱歉，医生拒绝了您的预约，请重新预约其他时间或医生', 'appointment', $appointment->id);
@@ -213,9 +202,19 @@ class DoctorAppointmentService
         return ['id' => $appointment->id, 'status' => 'cancelled', 'updated_at' => $appointment->updated_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')];
     }
 
-    private function findOwn(int $doctorId, int $id): Appointment
+    /**
+     * 状态流转统一走行锁 + 锁后复查，串行化与患者取消/其他医生操作的并发
+     */
+    private function transition(int $doctorId, int $appointmentId, array $fromStatuses, string $toStatus): Appointment
     {
-        return Appointment::where('doctor_id', $doctorId)->find($id)
-            ?? throw new BusinessException('预约不存在或不属于当前医生', ResponseCode::DATA_NOT_FOUND);
+        return DB::transaction(function () use ($doctorId, $appointmentId, $fromStatuses, $toStatus) {
+            $a = Appointment::where('doctor_id', $doctorId)->where('id', $appointmentId)->lockForUpdate()->first()
+                ?? throw new BusinessException('预约不存在或不属于当前医生', ResponseCode::DATA_NOT_FOUND);
+            if (! in_array($a->status, $fromStatuses, true)) {
+                throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
+            }
+            $a->update(['status' => $toStatus]);
+            return $a;
+        });
     }
 }

@@ -5,11 +5,12 @@ namespace App\Http\Services\GYZ;
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
 use App\Models\AiDiagnosis;
+use App\Models\Appointment;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class DoctorAiDiagnosisService
 {
@@ -18,13 +19,22 @@ class DoctorAiDiagnosisService
      */
     public function create(int $doctorId, int $patientId, ?int $appointmentId, UploadedFile $image, string $description): array
     {
-        $patient = User::select(['id', 'name'])->find($patientId);
+        $patient = User::select(['id', 'name'])->where('role', 'patient')->find($patientId);
         if (! $patient) {
             throw new BusinessException('患者不存在', ResponseCode::DATA_NOT_FOUND);
         }
 
-        $path = $image->store('ai-images', 'public');
-        $imageUrl = Storage::url($path);
+        // 关联预约必须存在、属于当前医生且属于该患者，防止挂到他人预约上
+        if ($appointmentId !== null) {
+            $appointment = Appointment::select(['id', 'doctor_id', 'patient_id'])->find($appointmentId);
+            if (! $appointment || (int) $appointment->doctor_id !== $doctorId || (int) $appointment->patient_id !== $patientId) {
+                throw new BusinessException('预约不存在或不属于该患者', ResponseCode::DATA_NOT_FOUND);
+            }
+        }
+
+        // 医学影像属敏感数据：存私有磁盘（不可直接公网访问），对外只发放限时签名 URL
+        $path = $image->store('ai-images', 'local');
+        $imageFile = basename($path);
 
         // remote 模式：调用千问 VL
         if (config('ai.mode') === 'remote') {
@@ -52,7 +62,7 @@ class DoctorAiDiagnosisService
             'suspected_lesions' => $result['suspected_lesions'],
             'treatment_recommendations' => $result['treatment_recommendations'],
             'confidence' => $result['confidence'],
-            'image_url' => $imageUrl,
+            'image_url' => $imageFile,
         ]);
 
         Log::channel('business')->info('AI图文诊断完成', [
@@ -72,9 +82,22 @@ class DoctorAiDiagnosisService
             'suspected_lesions' => $diag->suspected_lesions,
             'treatment_recommendations' => $diag->treatment_recommendations,
             'confidence' => $diag->confidence,
-            'image_url' => $diag->image_url,
+            'image_url' => $this->imageUrl($diag->image_url),
             'created_at' => $diag->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * 生成限时签名访问 URL（30 分钟）；库里 image_url 只存文件名，兼容历史 /storage/ 格式
+     */
+    private function imageUrl(?string $file): ?string
+    {
+        if (! $file) {
+            return null;
+        }
+        $file = basename(str_replace('\\', '/', $file));
+
+        return URL::temporarySignedRoute('ai-image.show', now()->addMinutes(30), ['file' => $file]);
     }
 
     /**
@@ -131,7 +154,7 @@ class DoctorAiDiagnosisService
             'suspected_lesions' => $diag->suspected_lesions,
             'treatment_recommendations' => $diag->treatment_recommendations,
             'confidence' => $diag->confidence,
-            'image_url' => $diag->image_url,
+            'image_url' => $this->imageUrl($diag->image_url),
             'created_at' => $diag->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
         ];
     }

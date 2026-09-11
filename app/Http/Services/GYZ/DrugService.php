@@ -59,7 +59,15 @@ class DrugService
             throw new BusinessException('药品名称已存在', ResponseCode::DATA_DUPLICATE);
         }
 
-        $drug = Drug::create($data);
+        try {
+            $drug = Drug::create($data);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // 并发提交同名药品撞唯一键：预检查双过，落库时以唯一键为准
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                throw new BusinessException('药品名称已存在', ResponseCode::DATA_DUPLICATE);
+            }
+            throw $e;
+        }
 
         // 双轨同步：新建药品同步建立 drug_stocks 行，否则发药端视为零库存
         DrugStock::updateOrCreate(
@@ -91,7 +99,14 @@ class DrugService
             throw new BusinessException('药品名称已存在', ResponseCode::DATA_DUPLICATE);
         }
 
-        $drug->update($data);
+        try {
+            $drug->update($data);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                throw new BusinessException('药品名称已存在', ResponseCode::DATA_DUPLICATE);
+            }
+            throw $e;
+        }
 
         return $this->format($drug);
     }

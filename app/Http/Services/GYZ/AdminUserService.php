@@ -53,14 +53,22 @@ class AdminUserService
             throw new BusinessException('邮箱已被注册', ResponseCode::DATA_DUPLICATE);
         }
 
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => $data['password'],
-            'role' => $data['role'],
-            'phone' => $data['phone'] ?? null,
-            'status' => 'active',
-        ]);
+        try {
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => $data['password'],
+                'role' => $data['role'],
+                'phone' => $data['phone'] ?? null,
+                'status' => 'active',
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // 并发提交同邮箱撞唯一键：预检查双过，落库时以唯一键为准
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                throw new BusinessException('邮箱已被注册', ResponseCode::DATA_DUPLICATE);
+            }
+            throw $e;
+        }
 
         OperationLogService::log('create', 'user', 'user', $user->id, "创建用户 {$user->name}（{$user->email}，角色 {$user->role}）");
 
@@ -98,9 +106,30 @@ class AdminUserService
             throw new BusinessException('不允许修改自己的角色', ResponseCode::FORBIDDEN);
         }
 
-        $user->update(array_filter($data, fn ($v) => $v !== null));
+        $changes = array_filter($data, fn ($v) => $v !== null);
+        $oldRole = $user->role;
+        try {
+            $user->update($changes);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                throw new BusinessException('邮箱已被注册', ResponseCode::DATA_DUPLICATE);
+            }
+            throw $e;
+        }
 
-        OperationLogService::log('update', 'user', 'user', $user->id, '更新用户信息：' . implode('、', array_keys(array_filter($data, fn ($v) => $v !== null))));
+        // 角色变更属高权限操作：记录新旧值并吊销目标全部 token，强制重新登录
+        if (isset($data['role']) && $data['role'] !== $oldRole) {
+            $user->tokens()->delete();
+            OperationLogService::log('update', 'user', 'user', $user->id, "角色变更：{$oldRole} → {$data['role']}，已同步吊销其全部 token");
+            Log::channel('business')->warning('管理员变更用户角色', [
+                'operator_id' => auth()->id(),
+                'target_user_id' => $user->id,
+                'old_role' => $oldRole,
+                'new_role' => $data['role'],
+            ]);
+        } else {
+            OperationLogService::log('update', 'user', 'user', $user->id, '更新用户信息：' . implode('、', array_keys($changes)));
+        }
 
         return $this->format($user);
     }

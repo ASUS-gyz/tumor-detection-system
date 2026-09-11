@@ -23,7 +23,7 @@ class PatientController extends Controller
         return Result::success('成功', [
             'pending_count' => Appointment::where('patient_id', $pid)->whereIn('status', ['pending', 'called', 'in_progress'])->count(),
             'completed_count' => Appointment::where('patient_id', $pid)->where('status', 'completed')->count(),
-            'ai_diagnosis_count' => \App\Models\AIDiagnosis::where('patient_id', $pid)->where('type', 'text')->count(),
+            'ai_diagnosis_count' => \App\Models\AiDiagnosis::where('patient_id', $pid)->where('type', 'text')->count(),
             'next_appointment' => $this->fmtSimple(Appointment::with('doctor:id,name,title,department')->where('patient_id', $pid)->whereIn('status', ['pending', 'called'])->orderBy('appointment_date')->orderBy('appointment_time')->first()),
         ]);
     }
@@ -95,10 +95,14 @@ class PatientController extends Controller
 
     public function cancel(int $id, Request $request): JsonResponse
     {
-        $a = Appointment::where('patient_id', $request->user()->id)->find($id);
-        if (! $a) throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND);
-        if (! $a->canCancel()) throw new BusinessException($a->status === 'cancelled' ? '该预约已取消' : '当前状态不可取消', ResponseCode::STATUS_NOT_ALLOWED);
-        $a->update(['status' => 'cancelled']);
+        // 行锁串行化取消与医生叫号/接诊的并发，锁后复查状态避免互相覆盖
+        $a = DB::transaction(function () use ($id, $request) {
+            $a = Appointment::where('patient_id', $request->user()->id)->where('id', $id)->lockForUpdate()->first();
+            if (! $a) throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND);
+            if (! $a->canCancel()) throw new BusinessException($a->status === 'cancelled' ? '该预约已取消' : '当前状态不可取消', ResponseCode::STATUS_NOT_ALLOWED);
+            $a->update(['status' => 'cancelled']);
+            return $a;
+        });
         return Result::success('预约已取消');
     }
 

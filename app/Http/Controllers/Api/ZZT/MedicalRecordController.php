@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\ZZT;
 use App\Enums\ResponseCode;
 use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ZZT\CreateMedicalRecordRequest;
+use App\Http\Requests\ZZT\UpdateMedicalRecordRequest;
 use App\Models\Appointment;
 use App\Models\MedicalRecord;
 use App\Support\Result;
@@ -35,12 +37,13 @@ class MedicalRecordController extends Controller
         return Result::success('成功', ['id' => $r->id, 'symptoms' => $r->symptoms, 'imaging_findings' => $r->imaging_findings, 'preliminary_diagnosis' => $r->preliminary_diagnosis, 'treatment_plan' => $r->treatment_plan, 'doctor' => ['id' => $r->doctor->id ?? null, 'name' => $r->doctor->name ?? '', 'title' => $r->doctor->title ?? '', 'specialty' => $r->doctor->specialty ?? ''], 'patient' => ['id' => $r->patient->id ?? null, 'name' => $r->patient->name ?? '', 'phone' => $r->patient->phone ?? ''], 'appointment' => ['id' => $r->appointment->id ?? null, 'date' => $r->appointment->appointment_date?->format('Y-m-d'), 'time' => $r->appointment->appointment_time ?? null], 'created_at' => $r->created_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'), 'updated_at' => $r->updated_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s')]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(CreateMedicalRecordRequest $request): JsonResponse
     {
-        $v = $request->validate(['appointment_id' => 'required|integer|exists:appointments,id', 'symptoms' => 'required|string|min:2', 'imaging_findings' => 'nullable|string', 'preliminary_diagnosis' => 'required|string|min:2', 'treatment_plan' => 'required|string|min:2']);
+        $v = $request->validated();
         $did = $request->user()->id;
         $a = Appointment::where('doctor_id', $did)->find($v['appointment_id']);
         if (! $a) throw new BusinessException('预约不存在或无权限', ResponseCode::DATA_NOT_FOUND);
+        if ($a->status === 'cancelled') throw new BusinessException('该预约已取消，无法创建病历', ResponseCode::STATUS_NOT_ALLOWED);
         if (MedicalRecord::where('appointment_id', $a->id)->exists()) throw new BusinessException('该预约已创建病历', ResponseCode::DUPLICATE_SUBMIT);
         $r = MedicalRecord::create(['appointment_id' => $a->id, 'patient_id' => $a->patient_id, 'doctor_id' => $did, 'symptoms' => $v['symptoms'], 'imaging_findings' => $v['imaging_findings'] ?? null, 'preliminary_diagnosis' => $v['preliminary_diagnosis'], 'treatment_plan' => $v['treatment_plan']]);
         return Result::success('病历创建成功', [
@@ -56,11 +59,11 @@ class MedicalRecordController extends Controller
         ]);
     }
 
-    public function update(int $id, Request $request): JsonResponse
+    public function update(int $id, UpdateMedicalRecordRequest $request): JsonResponse
     {
         $r = MedicalRecord::where('doctor_id', $request->user()->id)->find($id);
         if (! $r) throw new BusinessException('病历不存在或无权限', ResponseCode::DATA_NOT_FOUND);
-        $d = array_filter($request->only(['symptoms', 'imaging_findings', 'preliminary_diagnosis', 'treatment_plan']), fn($v) => $v !== null);
+        $d = array_filter($request->validated(), fn($v) => $v !== null);
         if (empty($d)) throw new BusinessException('至少提供一个更新字段', ResponseCode::PARAM_ERROR);
         $r->fill($d)->save();
         return Result::success('病历更新成功');

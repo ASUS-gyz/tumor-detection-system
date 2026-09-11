@@ -98,3 +98,28 @@ WHERE possible_conditions IS NOT NULL AND JSON_TYPE(possible_conditions) = 'STRI
 
 - 修复后复核：`doctor_schedules` 与 `ai_diagnoses` 双重编码行数均为 0。
 - 涉及表：doctor_schedules（time_slots 列值）、ai_diagnoses（possible_conditions 列值）。未修改任何表结构。
+
+## 变更 5：医学影像私有化迁移与 image_url 数据修复（2026-09-11）
+
+- **变更类型**：数据修复（非结构变更，字段类型/长度/索引均未动）
+- **修改日期**：2026-09-11 07:55:25
+- **修改人**：ASUS-gyz（git config user.name）
+- **原因**：医学影像（CT/MRI 等敏感数据）原存公有磁盘 `storage/app/public/ai-images/`，`image_url` 为 `/storage/...` 永久公开地址，无任何鉴权（issue #24）。私有化改造后（代码修改记录 2026-09-11 变更 9），存量文件与数据需同步迁移。
+
+### 操作语句
+
+通过 Laravel tinker 执行，等效于：
+
+```sql
+-- ai_diagnoses：3 行存量地址重写为文件名（签名 URL 由应用层实时生成）
+UPDATE ai_diagnoses
+SET image_url = SUBSTRING_INDEX(image_url, '/', -1)
+WHERE image_url IS NOT NULL AND image_url <> '';
+```
+
+文件迁移：`storage/app/public/ai-images/*` 10 个文件 → `storage/app/private/ai-images/`（公有目录原文件删除，迁移后公有侧剩余 0、私有侧 10）。
+
+### 说明
+
+- 修复后复核：`ai_diagnoses` 中 `image_url` 非空的 4 行（含迁移期间新写入 1 行）均为纯文件名格式，签名 URL 访问实测通过。
+- 涉及表：ai_diagnoses（image_url 列值）。未修改任何表结构。
