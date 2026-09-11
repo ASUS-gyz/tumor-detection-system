@@ -61,6 +61,12 @@ class DrugService
 
         $drug = Drug::create($data);
 
+        // 双轨同步：新建药品同步建立 drug_stocks 行，否则发药端视为零库存
+        DrugStock::updateOrCreate(
+            ['drug_id' => $drug->id],
+            ['quantity' => (int) ($data['stock_quantity'] ?? 0)]
+        );
+
         Log::channel('business')->info('新增药品', [
             'drug_id' => $drug->id,
             'name' => $drug->name,

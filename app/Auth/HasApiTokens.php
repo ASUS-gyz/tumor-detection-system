@@ -43,6 +43,7 @@ trait HasApiTokens
             'name' => $name,
             'token' => hash('sha256', $plainTextToken),
             'abilities' => $abilities,
+            'expires_at' => now()->addDays(30), // 默认 30 天过期，避免 token 永久有效
         ]);
 
         return [

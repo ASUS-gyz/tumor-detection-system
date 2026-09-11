@@ -71,3 +71,30 @@ system_configs ...  -- 各表补足至 30 条以上
 ### 填充后各表数量
 
 users 30、doctor_schedules 49、drugs 33、drug_stocks 33、appointments 35（completed 30）、medical_records 30、prescriptions 30、prescription_items 45、ai_diagnoses 30、drug_stock_changes 30、stock_movements 30、notifications 30、operation_logs 30、system_configs 30。此后接口联调又产生了少量测试数据（如"接口测试药品"、apitest 用户等），属正常联调痕迹。
+
+## 变更 4：存量 JSON 数据修复（2026-09-11）
+
+- **变更类型**：数据修复（非结构变更，字段类型/长度/索引均未动）
+- **修改日期**：2026-09-11 15:04:17
+- **修改人**：ASUS-gyz（git config user.name）
+- **原因**：BulkDataSeeder 对 `time_slots`/`possible_conditions` 预先 json_encode，而模型 array cast 会再编码一次，导致入库值双重编码（如 `"[\"08:30\",...]"`），cast 后得到字符串而非数组，排班时段校验、AI 可能疾病列表展示失效。种子代码已同步修复（代码修改记录 2026-09-11 变更 4）。
+
+### SQL 语句
+
+通过 Laravel tinker 逐行判断并规范化（JSON 字符串解包一层），等效于：
+
+```sql
+-- doctor_schedules：42 行双重编码值修复
+UPDATE doctor_schedules SET time_slots = JSON_UNQUOTE(time_slots)
+WHERE JSON_TYPE(time_slots) = 'STRING';
+-- ai_diagnoses：15 行双重编码值修复
+UPDATE ai_diagnoses SET possible_conditions = JSON_UNQUOTE(possible_conditions)
+WHERE possible_conditions IS NOT NULL AND JSON_TYPE(possible_conditions) = 'STRING';
+```
+
+实际执行方式为 tinker 内 PHP 逐行 `json_decode` 判定后 Eloquent update（等价于上述 SQL，且额外校验了解码结果为合法 JSON）。
+
+### 说明
+
+- 修复后复核：`doctor_schedules` 与 `ai_diagnoses` 双重编码行数均为 0。
+- 涉及表：doctor_schedules（time_slots 列值）、ai_diagnoses（possible_conditions 列值）。未修改任何表结构。

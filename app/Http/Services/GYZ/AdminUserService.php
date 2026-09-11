@@ -113,6 +113,11 @@ class AdminUserService
         $user = User::find($id) ?? throw new BusinessException('用户不存在', ResponseCode::DATA_NOT_FOUND);
         $user->update(['status' => $status]);
 
+        // 禁用即吊销其全部 API token，禁用立即生效（与 Guard 侧 status 检查双保险）
+        if ($status === 'disabled') {
+            $user->tokens()->delete();
+        }
+
         Log::channel('business')->warning('管理员变更用户状态', [
             'operator_id' => $selfId,
             'target_user_id' => $id,

@@ -59,6 +59,14 @@ class SanctumGuard implements Guard
             return null;
         }
 
+        // 已禁用账号立即失效：拒绝认证并吊销其全部 token（含存量 token）
+        if (($user->status ?? 'active') === 'disabled') {
+            PersonalAccessToken::where('tokenable_type', $user::class)
+                ->where('tokenable_id', $user->id)
+                ->delete();
+            return null;
+        }
+
         // 更新最后使用时间
         $accessToken->forceFill(['last_used_at' => now()])->save();
 
