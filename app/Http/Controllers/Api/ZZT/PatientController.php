@@ -9,6 +9,7 @@ use App\Http\Requests\ZZT\CreateAppointmentRequest;
 use App\Http\Requests\ZZT\AppointmentListRequest;
 use App\Models\Appointment;
 use App\Models\DoctorSchedule;
+use App\Models\Review;
 use App\Models\User;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
@@ -129,7 +130,32 @@ class PatientController extends Controller
         $a = Appointment::where('patient_id', $request->user()->id)->find($id);
         if (! $a) throw new BusinessException('预约记录不存在', ResponseCode::DATA_NOT_FOUND);
         if ($a->status !== 'completed') throw new BusinessException('仅可评价已完成的就诊', ResponseCode::STATUS_NOT_ALLOWED);
-        return Result::success('评价提交成功', ['appointment_id' => $a->id, 'rating' => (int) $request->input('rating'), 'content' => $request->input('content')]);
+        if (Review::where('appointment_id', $a->id)->exists()) throw new BusinessException('该就诊已评价，请勿重复提交', ResponseCode::DUPLICATE_SUBMIT);
+
+        try {
+            $review = Review::create([
+                'appointment_id' => $a->id,
+                'patient_id' => $a->patient_id,
+                'doctor_id' => $a->doctor_id,
+                'rating' => (int) $request->input('rating'),
+                'content' => $request->input('content'),
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // 并发双击撞 appointment_id 唯一键：以唯一约束为准
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                throw new BusinessException('该就诊已评价，请勿重复提交', ResponseCode::DUPLICATE_SUBMIT);
+            }
+            throw $e;
+        }
+
+        return Result::success('评价提交成功', [
+            'id' => $review->id,
+            'appointment_id' => $review->appointment_id,
+            'doctor_id' => $review->doctor_id,
+            'rating' => $review->rating,
+            'content' => $review->content,
+            'created_at' => $review->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+        ]);
     }
 
     private function fmt(Appointment $a): array { return ['id' => $a->id, 'appointment_date' => $a->appointment_date, 'appointment_time' => $a->appointment_time, 'status' => $a->status, 'doctor' => $a->doctor ? ['id' => $a->doctor->id, 'name' => $a->doctor->name, 'title' => $a->doctor->title, 'department' => $a->doctor->department] : null, 'created_at' => $a->created_at]; }
