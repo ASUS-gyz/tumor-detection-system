@@ -62,6 +62,8 @@ class AdminUserService
             'status' => 'active',
         ]);
 
+        OperationLogService::log('create', 'user', 'user', $user->id, "创建用户 {$user->name}（{$user->email}，角色 {$user->role}）");
+
         Log::channel('business')->warning('管理员创建用户', [
             'operator_id' => auth()->id(),
             'created_user_id' => $user->id,
@@ -98,6 +100,8 @@ class AdminUserService
 
         $user->update(array_filter($data, fn ($v) => $v !== null));
 
+        OperationLogService::log('update', 'user', 'user', $user->id, '更新用户信息：' . implode('、', array_keys(array_filter($data, fn ($v) => $v !== null))));
+
         return $this->format($user);
     }
 
@@ -117,6 +121,8 @@ class AdminUserService
         if ($status === 'disabled') {
             $user->tokens()->delete();
         }
+
+        OperationLogService::log('status_change', 'user', 'user', $user->id, "用户状态变更为 {$status}" . ($status === 'disabled' ? '，已同步吊销全部 token' : ''));
 
         Log::channel('business')->warning('管理员变更用户状态', [
             'operator_id' => $selfId,

@@ -128,6 +128,9 @@ class DoctorAppointmentService
         }
         $appointment->update(['status' => 'called']);
 
+        // 通知患者叫号
+        NotificationService::send($appointment->patient_id, 'appointment_call', '叫号提醒', '医生已叫号，请您前往诊室就诊', 'appointment', $appointment->id);
+
         Log::channel('business')->info('医生叫号', [
             'doctor_id' => $doctorId,
             'appointment_id' => $appointmentId,
@@ -198,6 +201,9 @@ class DoctorAppointmentService
             throw new BusinessException('当前状态不可操作', ResponseCode::STATUS_NOT_ALLOWED);
         }
         $appointment->update(['status' => 'cancelled']);
+
+        // 通知患者预约被拒
+        NotificationService::send($appointment->patient_id, 'system', '预约被拒', '很抱歉，医生拒绝了您的预约，请重新预约其他时间或医生', 'appointment', $appointment->id);
 
         Log::channel('business')->warning('医生拒绝预约', [
             'doctor_id' => $doctorId,

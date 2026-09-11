@@ -8,15 +8,15 @@ use Illuminate\Pagination\LengthAwarePaginator;
 class OperationLogService
 {
     /**
-     * 记录操作日志
+     * 记录操作日志（$operatorId/$operatorName 用于登录等 auth 未就绪场景）
      */
-    public static function log(string $action, string $module, ?string $targetType = null, ?int $targetId = null, ?string $content = null): void
+    public static function log(string $action, string $module, ?string $targetType = null, ?int $targetId = null, ?string $content = null, ?int $operatorId = null, ?string $operatorName = null): void
     {
         $user = auth()->user();
 
         OperationLog::create([
-            'user_id' => $user?->id,
-            'user_name' => $user?->name ?? '系统',
+            'user_id' => $operatorId ?? $user?->id,
+            'user_name' => $operatorName ?? $user?->name ?? '系统',
             'action' => $action,
             'module' => $module,
             'target_type' => $targetType,

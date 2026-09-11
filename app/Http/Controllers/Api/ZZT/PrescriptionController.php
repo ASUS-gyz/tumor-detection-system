@@ -12,10 +12,14 @@ use App\Models\DrugStockChange;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
 use App\Models\StockMovement;
+use App\Models\User;
+use App\Http\Services\GYZ\DrugService;
+use App\Http\Services\GYZ\NotificationService;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PrescriptionController extends Controller
 {
@@ -63,6 +67,19 @@ class PrescriptionController extends Controller
             }
             $rx->status = 'dispensed'; $rx->save(); DB::commit();
         } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('取药失败', ResponseCode::BUSINESS_ERROR); }
+
+        // 低库存预警：发药后低于阈值的药品通知全部管理员（旁路，不阻断取药）
+        try {
+            foreach ($rx->items as $i) {
+                $d = Drug::find($i->drug_id, ['id', 'name', 'stock_quantity']);
+                if ($d && $d->stock_quantity < DrugService::LOW_STOCK_THRESHOLD) {
+                    foreach (User::where('role', 'admin')->where('status', 'active')->pluck('id') as $aid) {
+                        NotificationService::send($aid, 'stock_warning', '库存预警', "药品「{$d->name}」库存剩余 {$d->stock_quantity}，已低于预警阈值，请及时补货", 'drug', $d->id);
+                    }
+                }
+            }
+        } catch (\Throwable $e) { Log::error('库存预警发送失败', ['prescription_id' => $rx->id, 'error' => $e->getMessage()]); }
+
         return Result::success('取药成功');
     }
 
@@ -81,6 +98,10 @@ class PrescriptionController extends Controller
         if ($ins) return Result::error(ResponseCode::STOCK_NOT_ENOUGH, '库存不足：' . implode('、', array_column($ins, 'drug_name')), ['detail' => $ins]);
         DB::beginTransaction();
         try { $rx = Prescription::create(['appointment_id' => $a->id, 'patient_id' => $a->patient_id, 'doctor_id' => $did, 'status' => 'pending']); foreach ($v['items'] as $i) PrescriptionItem::create(['prescription_id' => $rx->id, 'drug_id' => $i['drug_id'], 'quantity' => $i['quantity'], 'dosage' => $i['dosage'], 'instructions' => $i['instructions'] ?? null]); DB::commit(); } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('处方创建失败', ResponseCode::BUSINESS_ERROR); }
+
+        // 通知患者处方已开具，可取药
+        NotificationService::send($a->patient_id, 'prescription_ready', '处方已开具', '医生已为您开具处方，请前往药房取药', 'prescription', $rx->id);
+
         $rx->load('items.drug:id,name,specification');
         return Result::success('处方开具成功', [
             'id' => $rx->id,

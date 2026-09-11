@@ -4,23 +4,28 @@ namespace App\Http\Services\GYZ;
 
 use App\Models\Notification;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
     /**
-     * 发送通知
+     * 发送通知（尽力而为：失败仅记录，不阻断主业务）
      */
     public static function send(int $userId, string $type, string $title, string $content, ?string $refType = null, ?int $refId = null): void
     {
-        Notification::create([
-            'user_id' => $userId,
-            'type' => $type,
-            'title' => $title,
-            'content' => $content,
-            'reference_type' => $refType,
-            'reference_id' => $refId,
-            'created_at' => now(),
-        ]);
+        try {
+            Notification::create([
+                'user_id' => $userId,
+                'type' => $type,
+                'title' => $title,
+                'content' => $content,
+                'reference_type' => $refType,
+                'reference_id' => $refId,
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('通知发送失败', ['user_id' => $userId, 'type' => $type, 'error' => $e->getMessage()]);
+        }
     }
 
     /**
