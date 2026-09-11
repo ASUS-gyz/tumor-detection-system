@@ -8,10 +8,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ZZT\CreateAppointmentRequest;
 use App\Http\Requests\ZZT\AppointmentListRequest;
 use App\Models\Appointment;
+use App\Models\DoctorSchedule;
 use App\Models\User;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PatientController extends Controller
 {
@@ -44,10 +46,34 @@ class PatientController extends Controller
     public function store(CreateAppointmentRequest $request): JsonResponse
     {
         $v = $request->validated(); $pid = $request->user()->id;
-        if (Appointment::where('patient_id', $pid)->whereIn('status', ['pending', 'called', 'in_progress'])->exists()) throw new BusinessException('您已有一个进行中的预约', ResponseCode::DUPLICATE_SUBMIT);
-        $a = Appointment::create(['patient_id' => $pid, 'doctor_id' => $v['doctor_id'], 'appointment_date' => $v['appointment_date'], 'appointment_time' => $v['appointment_time'], 'status' => 'pending']);
+        $a = DB::transaction(function () use ($v, $pid) {
+            if (Appointment::where('patient_id', $pid)->whereIn('status', ['pending', 'called', 'in_progress'])->exists()) throw new BusinessException('您已有一个进行中的预约', ResponseCode::DUPLICATE_SUBMIT);
+            $this->assertSlotBookable((int) $v['doctor_id'], $v['appointment_date'], $v['appointment_time']);
+            return Appointment::create(['patient_id' => $pid, 'doctor_id' => $v['doctor_id'], 'appointment_date' => $v['appointment_date'], 'appointment_time' => $v['appointment_time'], 'status' => 'pending']);
+        });
         $a->load('doctor:id,name,title,department');
         return Result::success('预约成功', $this->fmt($a));
+    }
+
+    /**
+     * 排班约束：停诊/时段开放/时段占用/当日上限。
+     * 以该医生该星期几的排班行为锁载体（无则原子补建默认行），保证并发预约串行。
+     */
+    private function assertSlotBookable(int $doctorId, string $date, string $time): void
+    {
+        $dow = (int) date('w', strtotime($date)); // 与表结构一致：0=周日
+        $schedule = DoctorSchedule::where('doctor_id', $doctorId)->where('day_of_week', $dow)->lockForUpdate()->first();
+        if (! $schedule) {
+            DoctorSchedule::upsert([['doctor_id' => $doctorId, 'day_of_week' => $dow, 'is_available' => true, 'time_slots' => null, 'max_patients' => 20]], ['doctor_id', 'day_of_week']);
+            $schedule = DoctorSchedule::where('doctor_id', $doctorId)->where('day_of_week', $dow)->lockForUpdate()->first();
+        }
+        if (! $schedule) throw new BusinessException('排班信息异常', ResponseCode::BUSINESS_ERROR);
+        if (! $schedule->is_available) throw new BusinessException('该医生在所选日期停诊', ResponseCode::STATUS_NOT_ALLOWED);
+        $slots = $schedule->time_slots;
+        if (is_array($slots) && $slots !== [] && ! in_array($time, $slots, true)) throw new BusinessException('所选时段未开放预约', ResponseCode::PARAM_OUT_OF_RANGE);
+        $active = ['pending', 'called', 'in_progress', 'completed'];
+        if (Appointment::where('doctor_id', $doctorId)->where('appointment_date', $date)->where('appointment_time', $time)->whereIn('status', $active)->exists()) throw new BusinessException('所选时段已被预约', ResponseCode::DUPLICATE_SUBMIT);
+        if (Appointment::where('doctor_id', $doctorId)->where('appointment_date', $date)->whereIn('status', $active)->count() >= $schedule->max_patients) throw new BusinessException('该医生当日号源已满', ResponseCode::DUPLICATE_SUBMIT);
     }
 
     public function index(AppointmentListRequest $request): JsonResponse
@@ -79,9 +105,18 @@ class PatientController extends Controller
     public function availableSlots(Request $request): JsonResponse
     {
         $request->validate(['doctor_id' => 'required|integer|exists:users,id,role,doctor,status,active', 'date' => 'required|date|after_or_equal:today']);
-        $all = ['08:30', '09:15', '10:00', '10:45', '13:30', '14:15', '15:00', '15:45'];
-        $booked = Appointment::where('doctor_id', $request->input('doctor_id'))->where('appointment_date', $request->input('date'))->whereIn('status', ['pending', 'called', 'in_progress'])->pluck('appointment_time')->toArray();
-        return Result::success('成功', ['date' => $request->input('date'), 'all_slots' => $all, 'booked_slots' => $booked, 'available_slots' => array_values(array_diff($all, $booked))]);
+        $doctorId = (int) $request->input('doctor_id'); $date = $request->input('date');
+        $dow = (int) date('w', strtotime($date));
+        $schedule = DoctorSchedule::where('doctor_id', $doctorId)->where('day_of_week', $dow)->first();
+        $all = (is_array($schedule?->time_slots) && $schedule->time_slots !== []) ? $schedule->time_slots : CreateAppointmentRequest::ALLOWED_TIMES;
+        if ($schedule && ! $schedule->is_available) {
+            $booked = $available = [];
+        } else {
+            $booked = Appointment::where('doctor_id', $doctorId)->where('appointment_date', $date)->whereIn('status', ['pending', 'called', 'in_progress', 'completed'])->pluck('appointment_time')->toArray();
+            $available = array_values(array_diff($all, $booked));
+            if ($schedule && count($booked) >= $schedule->max_patients) $available = [];
+        }
+        return Result::success('成功', ['date' => $date, 'all_slots' => $all, 'booked_slots' => $booked, 'available_slots' => $available]);
     }
 
     public function review(int $id, Request $request): JsonResponse

@@ -11,6 +11,7 @@ use App\Models\DrugStock;
 use App\Models\DrugStockChange;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
+use App\Models\StockMovement;
 use App\Support\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,7 +47,22 @@ class PrescriptionController extends Controller
         $ins = []; foreach ($rx->items as $i) { $s = DrugStock::where('drug_id', $i->drug_id)->first(); if (($s ? $s->quantity : 0) < $i->quantity) $ins[] = ['drug_name' => $i->drug->name ?? '', 'need' => $i->quantity, 'have' => $s ? $s->quantity : 0]; }
         if ($ins) return Result::error(ResponseCode::STOCK_NOT_ENOUGH, '库存不足：' . implode('、', array_column($ins, 'drug_name')), ['detail' => $ins]);
         DB::beginTransaction();
-        try { foreach ($rx->items as $i) { $s = DrugStock::where('drug_id', $i->drug_id)->lockForUpdate()->first(); if (! $s || $s->quantity < $i->quantity) throw new \Exception("库存不足"); $b = $s->quantity; $s->quantity -= $i->quantity; $s->save(); DrugStockChange::create(['drug_id' => $i->drug_id, 'type' => 'out', 'quantity' => $i->quantity, 'before_quantity' => $b, 'after_quantity' => $s->quantity, 'reason' => '取药#'.$rx->id, 'related_id' => $rx->id, 'related_type' => 'prescription']); } $rx->status = 'dispensed'; $rx->save(); DB::commit(); } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('取药失败', ResponseCode::BUSINESS_ERROR); }
+        try {
+            foreach ($rx->items as $i) {
+                // 双轨同步：drugs.stock_quantity 与 drug_stocks.quantity 必须一致扣减。
+                // 先锁 drugs 再锁 drug_stocks，与 GYZ 入库（DrugService::stockIn）加锁顺序一致，避免死锁。
+                $d = Drug::where('id', $i->drug_id)->lockForUpdate()->first();
+                $s = DrugStock::where('drug_id', $i->drug_id)->lockForUpdate()->first();
+                $have = min($d?->stock_quantity ?? 0, $s?->quantity ?? 0);
+                if ($have < $i->quantity) throw new \Exception("库存不足");
+                $d->stock_quantity -= $i->quantity; $d->save();
+                $b = $s->quantity; $s->quantity -= $i->quantity; $s->save();
+                DrugStockChange::create(['drug_id' => $i->drug_id, 'type' => 'out', 'quantity' => $i->quantity, 'before_quantity' => $b, 'after_quantity' => $s->quantity, 'reason' => '取药#'.$rx->id, 'related_id' => $rx->id, 'related_type' => 'prescription']);
+                // 同步写入 GYZ 台账，否则管理端出库统计/流水/药品消耗恒为 0
+                StockMovement::create(['drug_id' => $i->drug_id, 'type' => 'out', 'quantity' => $i->quantity, 'before_quantity' => $b, 'after_quantity' => $s->quantity, 'reference_type' => 'prescription_dispense', 'reference_id' => $rx->id, 'remark' => '处方发药出库', 'operator_id' => $request->user()->id, 'created_at' => now()]);
+            }
+            $rx->status = 'dispensed'; $rx->save(); DB::commit();
+        } catch (\Throwable $e) { DB::rollBack(); throw new BusinessException('取药失败', ResponseCode::BUSINESS_ERROR); }
         return Result::success('取药成功');
     }
 

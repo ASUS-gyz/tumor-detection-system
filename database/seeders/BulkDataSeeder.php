@@ -125,7 +125,7 @@ class BulkDataSeeder extends Seeder
                         'doctor_id' => $doctorId,
                         'day_of_week' => $day,
                         'is_available' => $day !== 0, // 周日不接诊
-                        'time_slots' => json_encode($this->timeSlots),
+                        'time_slots' => $this->timeSlots, // 模型 array cast 自动编码，勿预 json_encode（否则双重编码）
                         'max_patients' => 20,
                     ]);
                 }
@@ -340,7 +340,7 @@ class BulkDataSeeder extends Seeder
                     'risk_level' => $risks[$i % 3],
                     'risk_warning' => $i % 3 === 2 ? '症状持续加重时请立即就医，勿延误。' : '建议两周内门诊复查。',
                     'advice' => '建议尽快至肿瘤科门诊就诊，完善增强CT与实验室检查。',
-                    'possible_conditions' => json_encode(['慢性炎症待排', '早期占位性病变待排', '功能性疾病']),
+                    'possible_conditions' => ['慢性炎症待排', '早期占位性病变待排', '功能性疾病'], // 模型 array cast 自动编码，勿预 json_encode
                 ]);
             } else {
                 AiDiagnosis::create([

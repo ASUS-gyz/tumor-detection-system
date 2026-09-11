@@ -48,44 +48,22 @@ class AdminStatisticsService
      */
     public function drugConsumption(?string $dateFrom = null, ?string $dateTo = null): array
     {
-        // GYZ 入库/出库记录
-        $gyz = StockMovement::with('drug:id,name,specification')
+        // 出库统一读 stock_movements：处方发药出库已同步写入该表（PrescriptionController::confirm），
+        // 不再合并 drug_stock_changes，避免同一批发药双计
+        return StockMovement::with('drug:id,name,specification')
             ->where('type', 'out')
             ->select('drug_id', DB::raw('sum(quantity) as total_out'), DB::raw('count(*) as times'))
             ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
-            ->groupBy('drug_id')->get();
-
-        // ZZT 取药出库记录（drug_stock_changes 表）
-        $zzt = DB::table('drug_stock_changes')
-            ->where('type', 'out')
-            ->select('drug_id', DB::raw('sum(quantity) as total_out'), DB::raw('count(*) as times'))
-            ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
-            ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
-            ->groupBy('drug_id')->get();
-
-        // 合并
-        $merged = [];
-        foreach ($gyz as $r) {
-            $merged[$r->drug_id] = [
+            ->groupBy('drug_id')
+            ->get()
+            ->map(fn ($r) => [
                 'drug_id' => $r->drug_id, 'drug_name' => $r->drug?->name, 'specification' => $r->drug?->specification,
                 'total_dispensed' => (int) $r->total_out, 'dispense_count' => (int) $r->times,
-            ];
-        }
-        foreach ($zzt as $r) {
-            $drug = Drug::find($r->drug_id);
-            if (isset($merged[$r->drug_id])) {
-                $merged[$r->drug_id]['total_dispensed'] += (int) $r->total_out;
-                $merged[$r->drug_id]['dispense_count'] += (int) $r->times;
-            } else {
-                $merged[$r->drug_id] = [
-                    'drug_id' => $r->drug_id, 'drug_name' => $drug?->name, 'specification' => $drug?->specification,
-                    'total_dispensed' => (int) $r->total_out, 'dispense_count' => (int) $r->times,
-                ];
-            }
-        }
-
-        return array_values(collect($merged)->sortByDesc('total_dispensed')->toArray());
+            ])
+            ->sortByDesc('total_dispensed')
+            ->values()
+            ->toArray();
     }
 
     /**
