@@ -32,10 +32,7 @@ class DoctorAiDiagnosisService
             }
         }
 
-        // 医学影像属敏感数据：存私有磁盘（不可直接公网访问），对外只发放限时签名 URL
-        $path = $image->store('ai-images', 'local');
-        $imageFile = basename($path);
-
+        // 先调用 AI 分析再落盘：AI 失败（网络/限流/格式异常）时不会残留无主影像文件
         // remote 模式：调用千问 VL
         if (config('ai.mode') === 'remote') {
             $qwen = app(QwenVisionService::class);
@@ -50,6 +47,10 @@ class DoctorAiDiagnosisService
                 'confidence'                => '92%',
             ];
         }
+
+        // 医学影像属敏感数据：存私有磁盘（不可直接公网访问），对外只发放限时签名 URL
+        $path = $image->store('ai-images', 'local');
+        $imageFile = basename($path);
 
         $diag = AiDiagnosis::create([
             'type' => 'image',

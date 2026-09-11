@@ -76,7 +76,7 @@ class PrescriptionController extends Controller
         try {
             foreach ($rx->items as $i) {
                 $d = Drug::find($i->drug_id, ['id', 'name', 'stock_quantity']);
-                if ($d && $d->stock_quantity < DrugService::LOW_STOCK_THRESHOLD) {
+                if ($d && $d->stock_quantity < DrugService::lowStockThreshold()) {
                     foreach (User::where('role', 'admin')->where('status', 'active')->pluck('id') as $aid) {
                         NotificationService::send($aid, 'stock_warning', '库存预警', "药品「{$d->name}」库存剩余 {$d->stock_quantity}，已低于预警阈值，请及时补货", 'drug', $d->id);
                     }

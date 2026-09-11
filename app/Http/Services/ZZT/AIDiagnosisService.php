@@ -78,7 +78,7 @@ class AIDiagnosisService extends BaseService
     {
         return [
             'imaging_features' => 'CT影像显示：局部组织密度改变，边界尚清晰，未见明显浸润征象。',
-            'risk_assessment' => '中度风险',
+            'risk_assessment' => '中风险',
             'suspected_lesions' => '疑似占位性病变，建议结合临床进一步评估。',
             'treatment_recommendations' => '1. 建议进行增强CT或MRI进一步明确；2. 必要时行穿刺活检；3. 请结合肿瘤标志物综合判断。',
             'confidence' => '85%',
@@ -112,11 +112,30 @@ class AIDiagnosisService extends BaseService
                         $result[$k] = implode('；', array_map(fn ($x) => is_scalar($x) ? (string) $x : json_encode($x, JSON_UNESCAPED_UNICODE), $v));
                     }
                 }
+                // 风险词归一化为 低风险/中风险/高风险（远程模型可能返回"中度风险""恶性"等变体）
+                foreach (['risk_level', 'risk_assessment'] as $riskKey) {
+                    if (isset($result[$riskKey])) {
+                        $result[$riskKey] = $this->normalizeRiskLevel((string) $result[$riskKey]);
+                    }
+                }
             }
             return $result ?: ($type === 'text' ? $this->mockTextDiagnosis((string)$input) : $this->mockImageDiagnosis((string)($input['description'] ?? '')));
         } catch (\Exception $e) {
             Log::error('AI调用失败', ['error' => $e->getMessage()]);
             throw new BusinessException('AI诊断服务暂时不可用', ResponseCode::THIRD_PARTY_ERROR);
         }
+    }
+
+    /**
+     * 风险等级归一化：取 高/中/低 关键字映射为标准三级词，无匹配时归为 未知
+     */
+    public static function normalizeRiskLevel(string $value): string
+    {
+        return match (true) {
+            mb_strpos($value, '高') !== false => '高风险',
+            mb_strpos($value, '中') !== false => '中风险',
+            mb_strpos($value, '低') !== false => '低风险',
+            default => '未知',
+        };
     }
 }

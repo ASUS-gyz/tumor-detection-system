@@ -12,7 +12,7 @@ class DoctorScheduleRequest extends BaseRequest
             'day_of_week' => 'required|integer|min:0|max:6',
             'is_available' => 'boolean',
             'time_slots' => 'nullable|array',
-            'time_slots.*' => 'string',
+            'time_slots.*' => 'string|date_format:H:i',
             'max_patients' => 'nullable|integer|min:1',
         ];
     }
@@ -25,6 +25,7 @@ class DoctorScheduleRequest extends BaseRequest
             'day_of_week.min' => '日期范围：周日(0)~周六(6)',
             'day_of_week.max' => '日期范围：周日(0)~周六(6)',
             'max_patients.min' => '最大接诊人数至少为1',
+            'time_slots.*.date_format' => '时间段格式必须为 HH:mm（如 09:30）',
         ];
     }
 }

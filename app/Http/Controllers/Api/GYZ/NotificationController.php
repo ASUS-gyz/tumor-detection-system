@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\GYZ;
 
+use App\Enums\ResponseCode;
+use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Services\GYZ\NotificationService;
 use App\Support\PaginationHelper;
@@ -36,7 +38,10 @@ class NotificationController extends Controller
      */
     public function markRead(int $id): JsonResponse
     {
-        $this->service->markRead(auth()->id(), $id);
+        $updated = $this->service->markRead(auth()->id(), $id);
+        if ($updated === 0) {
+            throw new BusinessException('通知不存在', ResponseCode::DATA_NOT_FOUND);
+        }
 
         return Result::success(msg: '已标记为已读');
     }

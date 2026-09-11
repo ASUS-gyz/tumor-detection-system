@@ -28,7 +28,7 @@ class DoctorAppointmentService
             'in_progress_count' => Appointment::where('doctor_id', $doctorId)->where('appointment_date', $today)->where('status', 'in_progress')->count(),
             'completed_today' => Appointment::where('doctor_id', $doctorId)->where('appointment_date', $today)->where('status', 'completed')->count(),
             'total_drugs' => Drug::count(),
-            'low_stock_drugs' => Drug::where('stock_quantity', '<', DrugService::LOW_STOCK_THRESHOLD)->count(),
+            'low_stock_drugs' => Drug::where('stock_quantity', '<', DrugService::lowStockThreshold())->count(),
         ];
     }
 

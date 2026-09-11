@@ -35,7 +35,8 @@ class NotificationService
     {
         return Notification::where('user_id', $userId)
             ->select(['id', 'type', 'title', 'content', 'is_read', 'reference_type', 'reference_id', 'created_at'])
-            ->when(isset($filters['is_read']), fn ($q) => $q->where('is_read', $filters['is_read']))
+            // is_read 由前端以字符串（"true"/"false"/"1"/"0"）传入，统一归一化为布尔再过滤
+            ->when(isset($filters['is_read']), fn ($q) => $q->where('is_read', filter_var($filters['is_read'], FILTER_VALIDATE_BOOLEAN)))
             ->latest()
             ->paginate($filters['size'] ?? 20, page: $filters['page'] ?? 1)
             ->through(fn ($n) => [
@@ -60,10 +61,12 @@ class NotificationService
 
     /**
      * 标记已读
+     *
+     * @return int 受影响行数（0 = 通知不存在或不属于该用户）
      */
-    public function markRead(int $userId, int $id): void
+    public function markRead(int $userId, int $id): int
     {
-        Notification::where('user_id', $userId)->where('id', $id)->update(['is_read' => true]);
+        return Notification::where('user_id', $userId)->where('id', $id)->update(['is_read' => true]);
     }
 
     /**

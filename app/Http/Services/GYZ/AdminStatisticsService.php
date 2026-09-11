@@ -19,7 +19,12 @@ class AdminStatisticsService
      */
     public function doctorWorkload(?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $query = Appointment::select('doctor_id', DB::raw('count(*) as total'), DB::raw("sum(case when status='completed' then 1 else 0 end) as completed"))
+        $query = Appointment::select(
+                'doctor_id',
+                DB::raw('count(*) as total'),
+                DB::raw("sum(case when status='completed' then 1 else 0 end) as completed"),
+                DB::raw("sum(case when status='cancelled' then 1 else 0 end) as cancelled")
+            )
             ->groupBy('doctor_id');
 
         if ($dateFrom) {
@@ -37,7 +42,9 @@ class AdminStatisticsService
                 'title' => $r->doctor?->title,
                 'total_appointments' => $r->total,
                 'completed_appointments' => $r->completed,
-                'completion_rate' => $r->total > 0 ? round($r->completed / $r->total * 100, 1) : 0,
+                'cancelled_appointments' => (int) $r->cancelled,
+                // 接诊完成率只统计实际接诊的预约（剔除已取消）
+                'completion_rate' => ($r->total - $r->cancelled) > 0 ? round($r->completed / ($r->total - $r->cancelled) * 100, 1) : 0,
             ])
             ->values()
             ->toArray();
@@ -79,7 +86,8 @@ class AdminStatisticsService
 
             $data[] = [
                 'month' => $start->format('Y-m'),
-                'appointments' => Appointment::whereBetween('created_at', [$start, $end])->count(),
+                // 预约按就诊日期归桶（预约可在就诊前任意时间创建，按 created_at 会算错月份）
+                'appointments' => Appointment::whereBetween('appointment_date', [$start->toDateString(), $end->toDateString()])->count(),
                 'prescriptions' => Prescription::whereBetween('created_at', [$start, $end])->count(),
                 'ai_diagnoses' => AiDiagnosis::whereBetween('created_at', [$start, $end])->count(),
                 'medical_records' => MedicalRecord::whereBetween('created_at', [$start, $end])->count(),
@@ -98,7 +106,7 @@ class AdminStatisticsService
         return [
             'total_drugs' => Drug::count(),
             'total_stock_value' => Drug::sum(DB::raw('stock_quantity * price')),
-            'low_stock_count' => Drug::where('stock_quantity', '<', DrugService::LOW_STOCK_THRESHOLD)->count(),
+            'low_stock_count' => Drug::where('stock_quantity', '<', DrugService::lowStockThreshold())->count(),
             'out_of_stock_count' => Drug::where('stock_quantity', 0)->count(),
             'stock_in_this_month' => StockMovement::where('type', 'in')->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->sum('quantity'),
             'stock_out_this_month' => StockMovement::where('type', 'out')->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->sum('quantity'),
